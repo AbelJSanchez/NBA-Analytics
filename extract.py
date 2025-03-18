@@ -44,4 +44,5 @@ conn.request("GET", "/teams", headers=headers)
 res = conn.getresponse()
 data = res.read()
 
-print(data.decode("utf-8"))
+json_data = json.loads(data)
+print(json.dumps(json_data, indent=2))
