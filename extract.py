@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv  # pip install python-dotenv
 import json
 import pandas as pd  # pip install pandas
+import math
 
 
 def extract_teams() -> pd.DataFrame:
@@ -31,6 +32,107 @@ def extract_teams() -> pd.DataFrame:
     print(data_frame.to_string())
     return data_frame
 
+
+def extract_players() -> pd.DataFrame:
+    """
+    Extracts player data via the API.
+
+    :return: A Pandas DataFrame containing NBA player information with the columns:
+                id, firstname, lastname, team, position, college, birthdate, rookie_year, height_feet,
+                height_inches, weight_pounds, jersey_number
+    """
+
+    # Request team data from the API - First API call
+    connection.request("GET", "/players?team=1&season=2021", headers=headers)
+    response = connection.getresponse()
+    data = response.read()
+    json_data = json.loads(data)
+    player_indexes = {}  #
+
+    # Parse JSON response for player info
+    players = []
+    for i, player in enumerate(json_data['response']):
+        player_indexes[player.get('id')] = i  # Used when adding the player's team in the second API call
+        player['college'] = player.get('college')
+        player['birthdate'] = player['birth'].get('date')
+        player['rookie_year'] = "None" if player['nba'].get('start') == 0 else player['nba'].get('start')
+        player['height_feet'] = "None" if player['height'].get('feets') in (None, "None") else float(player['height'].get('feets'))
+        player['height_inches'] = "None" if player['height'].get('inches') in (None, "None") else float(player['height'].get('inches'))
+        player['weight_pounds'] = "None" if player['weight'].get('pounds') in (None, "None") else float(player['weight'].get('pounds'))
+        player['jersey_number'] = player.get('leagues', {}).get('standard', {}).get('jersey', "None")
+        player['position'] = player.get('leagues', {}).get('standard', {}).get('pos', "None")
+        player['team_id'] = "None"  # Team is updated in the second API call
+        players.append(player)
+
+    # Second API call - Retrieve team info for each player
+    connection.request("GET", "/players/statistics?team=1&season=2021", headers=headers)
+    response = connection.getresponse()
+    data = response.read()
+    json_data = json.loads(data)
+    for player_stat in json_data['response']:
+        player_id = player_stat['player'].get('id')
+
+        if player_id in player_indexes:
+            index = player_indexes[player_id]
+            players[index]['team_id'] = player_stat.get('team', {}).get('id', "None")
+
+    # Create DataFrame containing the selected columns
+    player_columns = ['id', 'firstname', 'lastname', 'team_id', 'position', 'college', 'birthdate', 'rookie_year', 'height_feet', 'height_inches', 'weight_pounds', 'jersey_number']
+    player_data_frame = pd.DataFrame(players)[player_columns]
+    print(player_data_frame.to_string())
+    return player_data_frame
+
+
+def extract_games() -> pd.DataFrame:
+    """
+    Extracts game data in specified season via the API, filtering for NBA franchise teams.
+
+    :return: A Pandas DataFrame containing NBA game information within a season with the columns: id, season, date, duration, arena_name,
+                arena_location, home_team, home_team_id, visitor_team, visitor_team_id, winning_team, overtime, home_quarter_points,
+                home_points, visitor_quarter_points, visitor_points, times_tied, lead_changes
+    """
+    # Request game data from the API
+    connection.request("GET", "/games?league=standard&season=2021", headers=headers)
+    response = connection.getresponse()
+    data = response.read()
+
+    # Parse JSON response for game data
+    games = []
+    json_data = json.loads(data)
+    for game in json_data['response']:
+        game['id'] = game.get('id')
+        game['season'] = game.get('season')
+        game['duration'] = game['date'].get('duration') if game['date'].get('duration') != ":" else 'None'
+        game['date'] = game['date'].get('start')[5:10] + "-" + game['date'].get('start')[0:4]
+        game['arena_name'] = game['arena'].get('name')
+        game['arena_location'] = game['arena'].get('city') + ", " + game['arena'].get('state')
+        game['home_team_id'] = game['teams']['home'].get('id')
+        game['home_team'] = game['teams']['home'].get('name')
+        game['visitor_team_id'] = game['teams']['visitors'].get('id')
+        game['visitor_team'] = game['teams']['visitors'].get('name')
+        game['winning_team'] = game['home_team'] if game['scores']['home'].get('win') == 1 else game['visitor_team']
+        game['overtime'] = 'Yes' if game['periods'].get('current') > 4 else 'No'
+        game['home_quarter_points'] = ""
+        for quarter in game['scores']['home']['linescore']:
+            game['home_quarter_points'] += quarter + ", "
+        game['home_quarter_points'] = game['home_quarter_points'][:-2]
+        game['home_points'] = game['scores']['home']['points'] if game['scores']['home']['points'] is not None else 'None'
+        game['visitor_quarter_points'] = ""
+        for quarter in game['scores']['visitors']['linescore']:
+            game['visitor_quarter_points'] += quarter + ", "
+        game['visitor_quarter_points'] = game['visitor_quarter_points'][:-2]
+        game['visitor_points'] = game['scores']['visitors']['points'] if game['scores']['visitors']['points'] is not None else 'None'
+        game['times_tied'] = game.get('timesTied') if game.get('timesTied') is not None else 'None'
+        game['lead_changes'] = game.get('leadChanges') if game.get('leadChanges') is not None else 'None'
+        games.append(game)
+
+    # Create DataFrame containing the selected columns
+    game_columns = ['id', 'season', 'date', 'duration', 'arena_name', 'arena_location', 'home_team_id', 'home_team', 'visitor_team_id',
+                    'visitor_team', 'winning_team', 'overtime', 'home_quarter_points', 'home_points', 'visitor_quarter_points', 'visitor_points',
+                    'times_tied', 'lead_changes']
+    game_data_frame = pd.DataFrame(games)[game_columns]
+    print(game_data_frame.to_string())
+    return game_data_frame
 
 # Retrieve API and Database credentials from local .env file
 load_dotenv()
@@ -68,7 +170,8 @@ headers = {
     'x-rapidapi-key': API_KEY,
     }
 
-teams_df = extract_teams()
-print(teams_df.columns.to_list())
+# teams_df = extract_teams()
+# players_df = extract_players()
+games_df = extract_games()
 
 connection.close()
