@@ -31,7 +31,6 @@ def extract_teams() -> pd.DataFrame:
     # Create DataFrame containing the selected columns
     team_columns = ['id', 'name', 'nickname', 'code', 'city', 'conference', 'division']
     team_data_frame = pd.DataFrame(teams)[team_columns]
-    print(team_data_frame)
     return team_data_frame
 
 
@@ -49,7 +48,7 @@ def extract_players() -> pd.DataFrame:
     response = connection.getresponse()
     data = response.read()
     json_data = json.loads(data)
-    player_indexes = {}  #
+    player_indexes = {}
 
     # Parse JSON response for player info
     players = []
@@ -63,14 +62,16 @@ def extract_players() -> pd.DataFrame:
         player['weight_pounds'] = "None" if player['weight'].get('pounds') in (None, "None") else float(player['weight'].get('pounds'))
         player['jersey_number'] = player.get('leagues', {}).get('standard', {}).get('jersey', "None")
         player['position'] = player.get('leagues', {}).get('standard', {}).get('pos', "None")
-        player['team_id'] = "None"  # Team is updated in the second API call
+        player['team_id'] = "None"  # Team ID is updated in the second API call
         players.append(player)
 
-    # Second API call - Retrieve team info for each player
+    # Second API call - Retrieve team ID for each player
     connection.request("GET", "/players/statistics?team=1&season=2021", headers=headers)
     response = connection.getresponse()
     data = response.read()
     json_data = json.loads(data)
+
+    # Parse JSON response for team info
     for player_stat in json_data['response']:
         player_id = player_stat['player'].get('id')
 
@@ -121,7 +122,7 @@ headers = {
     'x-rapidapi-key': API_KEY,
     }
 
-teams_df = extract_teams()
+# teams_df = extract_teams()
 players_df = extract_players()
 
 connection.close()
