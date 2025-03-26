@@ -3,10 +3,14 @@ import os
 from dotenv import load_dotenv  # pip install python-dotenv
 import json
 import pandas as pd  # pip install pandas
+import time
+
+API_CALLS = 0  # Global variable that tracks the current number of API calls
+MAX_CALLS = 10  # The maximum number of API calls per minute
 
 pd.set_option('display.max_columns', None)  # Show all columns
 pd.set_option('display.width', None)  # Use maximum width of terminal
-pd.set_option('display.max_rows', 250)  # Show up to 250 rows
+pd.set_option('display.max_rows', None)  # Show all rows
 
 def extract_teams() -> pd.DataFrame:
     """
@@ -15,7 +19,9 @@ def extract_teams() -> pd.DataFrame:
     :return: A Pandas DataFrame containing NBA team information with the columns: name, nickname, code, city, logo
     """
     # Request team data from the API
+    global API_CALLS
     connection.request("GET", "/teams?league=standard", headers=headers)
+    API_CALLS += 1
     response = connection.getresponse()
     data = response.read()
 
@@ -43,41 +49,48 @@ def extract_players() -> pd.DataFrame:
                 id, firstname, lastname, position, college, birthdate, rookie_year, height_feet,
                 height_inches, weight_pounds, jersey_number
     """
-    # team_ids = teams_df['team_id'].tolist()
-    # seasons = [2021, 2022, 2023]
+    global API_CALLS, MAX_CALLS
+    team_ids = teams_df['team_id'].tolist()
+    seasons = [2021, 2022, 2023]
     players = []
     seen_players = set()
 
-    # API only allows to query one season and one team at a time
-    # for season in seasons:
-        # for team_id in team_ids:
-    # Request player data from the API
-    connection.request("GET", f"/players?team=1&season=2021", headers=headers)
-    response = connection.getresponse()
-    data = response.read()
-    json_data = json.loads(data)
+    # API only allows us to query one season and one team at a time
+    for season in seasons:
+        for team_id in team_ids:
+            # API only allows 10 cals per minute
+            if API_CALLS == MAX_CALLS:
+                time.sleep(60)
+                API_CALLS = 0
 
-    # Parse JSON response for player info
-    for player in json_data['response']:
-        # Check to see if we've already added that player
-        if player.get('id') in seen_players:
-            continue
+            # Request player data from the API
+            connection.request("GET", f"/players?season={season}&team={team_id}", headers=headers)
+            API_CALLS += 1
+            response = connection.getresponse()
+            data = response.read()
+            json_data = json.loads(data)
 
-        # Add player to set and player dictionary
-        seen_players.add(player.get('id'))
-        player['player_id'] = pd.NA if player.get('id') is None else player.get('id')
-        player['college'] = pd.NA if player.get('college') is None else player.get('college')
-        player['birthdate'] = pd.NA if player['birth'].get('date') is None else player['birth'].get('date')
-        player['rookie_year'] = pd.NA if player['nba'].get('start') == 0 else player['nba'].get('start')
-        player['height_feet'] = pd.NA if player['height'].get('feets') is None else int(player['height'].get('feets'))
-        player['height_inches'] = pd.NA if player['height'].get('inches') is None else int(player['height'].get('inches'))
-        player['weight_pounds'] = pd.NA if player['weight'].get('pounds') is None else int(player['weight'].get('pounds'))
-        player['jersey_number'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('jersey') is None else player.get('leagues', {}).get('standard', {}).get('jersey')
-        player['position'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('pos') is None else player.get('leagues', {}).get('standard', {}).get('pos')
-        players.append(player)
+            # Parse JSON response for player info
+            for player in json_data['response']:
+                # Check to see if we've already added that player
+                if player.get('id') in seen_players:
+                    continue
+
+                # Add player to set and player dictionary
+                seen_players.add(player.get('id'))
+                player['player_id'] = pd.NA if player.get('id') is None else player.get('id')
+                player['school'] = pd.NA if player.get('college') is None else player.get('college')
+                player['birthdate'] = pd.NA if player['birth'].get('date') is None else player['birth'].get('date')
+                player['rookie_year'] = pd.NA if player['nba'].get('start') == 0 else player['nba'].get('start')
+                player['height_feet'] = pd.NA if player['height'].get('feets') is None else int(player['height'].get('feets'))
+                player['height_inches'] = pd.NA if player['height'].get('inches') is None else int(player['height'].get('inches'))
+                player['weight_pounds'] = pd.NA if player['weight'].get('pounds') is None else int(player['weight'].get('pounds'))
+                player['jersey_number'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('jersey') is None else player.get('leagues', {}).get('standard', {}).get('jersey')
+                player['position'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('pos') is None else player.get('leagues', {}).get('standard', {}).get('pos')
+                players.append(player)
 
     # Create DataFrame containing the selected columns
-    player_columns = ['player_id', 'firstname', 'lastname', 'position', 'college', 'birthdate', 'rookie_year', 'height_feet', 'height_inches', 'weight_pounds', 'jersey_number']
+    player_columns = ['player_id', 'firstname', 'lastname', 'position', 'school', 'birthdate', 'rookie_year', 'height_feet', 'height_inches', 'weight_pounds', 'jersey_number']
     player_data_frame = pd.DataFrame(players)[player_columns]
     print(player_data_frame)
     return player_data_frame
@@ -119,7 +132,7 @@ headers = {
     'x-rapidapi-key': API_KEY,
     }
 
-# teams_df = extract_teams()
+teams_df = extract_teams()
 players_df = extract_players()
 
 connection.close()
