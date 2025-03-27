@@ -24,20 +24,23 @@ def extract_teams() -> pd.DataFrame:
     API_CALLS += 1
     response = connection.getresponse()
     data = response.read()
-
-    # Parse JSON response and filter for NBA franchises
-    teams = []
+    # print(data)  # Uncomment to debug
     json_data = json.loads(data)
+    teams = []
+
+    # Parse response and filter for NBA franchises
     for team in json_data['response']:
         if team.get('nbaFranchise') is True and team.get('allStar') is False:
             team['team_id'] = team.get('id')
+            team['abv'] = team.get('code')
             team['conference'] = team.get('leagues', {}).get('standard', {}).get('conference')
             team['division'] = team.get('leagues', {}).get('standard', {}).get('division')
             teams.append(team)
 
     # Create DataFrame containing the selected columns
-    team_columns = ['team_id', 'name', 'nickname', 'code', 'city', 'conference', 'division']
+    team_columns = ['team_id', 'name', 'nickname', 'abv', 'city', 'conference', 'division']
     team_data_frame = pd.DataFrame(teams)[team_columns]
+    # print(team_data_frame)  # Uncomment to debug
     return team_data_frame
 
 
@@ -58,7 +61,7 @@ def extract_players() -> pd.DataFrame:
     # API only allows us to query one season and one team at a time
     for season in seasons:
         for team_id in team_ids:
-            # API only allows 10 cals per minute
+            # API only allows 10 calls per minute
             if API_CALLS == MAX_CALLS:
                 time.sleep(60)
                 API_CALLS = 0
@@ -68,9 +71,10 @@ def extract_players() -> pd.DataFrame:
             API_CALLS += 1
             response = connection.getresponse()
             data = response.read()
+            # print(data)  # Uncomment to debug
             json_data = json.loads(data)
 
-            # Parse JSON response for player info
+            # Parse response for player info
             for player in json_data['response']:
                 # Check to see if we've already added that player
                 if player.get('id') in seen_players:
@@ -92,8 +96,46 @@ def extract_players() -> pd.DataFrame:
     # Create DataFrame containing the selected columns
     player_columns = ['player_id', 'firstname', 'lastname', 'position', 'school', 'birthdate', 'rookie_year', 'height_feet', 'height_inches', 'weight_pounds', 'jersey_number']
     player_data_frame = pd.DataFrame(players)[player_columns]
-    print(player_data_frame)
+    # print(player_data_frame)  # Uncomment to debug
     return player_data_frame
+
+
+def extract_player_stats() -> pd.DataFrame:
+    global API_CALLS, MAX_CALLS
+    player_stats = []
+    seasons = ['2021', '2022', '2023']
+    team_ids = teams_df['team_id'].tolist()
+
+    # API only allows us to query one season and one team at a time
+    for season in seasons:
+        for team_id in team_ids:
+            # API only allows 10 calls per minute
+            if API_CALLS == MAX_CALLS:
+                time.sleep(60)
+                API_CALLS = 0
+
+            # Request player stats from the API
+            connection.request("GET", f"/players/statistics?team={team_id}&season={season}", headers=headers)
+            API_CALLS += 1
+            response = connection.getresponse()
+            data = response.read()
+            json_data = json.loads(data)
+            # print(data)  # Uncomment to debug
+
+            # Parse response for player stats per game
+            for player_stat in json_data['response']:
+                player_stat['player_id'] = pd.NA if player_stat.get('player', {}).get('id') is None else player_stat.get('player', {}).get('id')
+                player_stat['game_id'] = pd.NA if player_stat.get('game', {}).get('id') is None else player_stat.get('game', {}).get('id')
+                player_stat['team_id'] = pd.NA if player_stat.get('team', {}).get('id') is None else player_stat.get('team', {}).get('id')
+                player_stat['season'] = season
+                player_stats.append(player_stat)
+
+    player_stat_columns = ['player_id', 'game_id', 'team_id', 'season', 'points', 'pos', 'min', 'fgm',
+                           'fga', 'fgp', 'ftm', 'fta', 'ftp', 'tpm', 'tpa', 'tpp', 'offReb', 'defReb', 'totReb', 'assists',
+                           'pFouls', 'steals', 'turnovers', 'blocks', 'plusMinus']
+    player_stat_data_frame = pd.DataFrame(player_stats)[player_stat_columns]
+    # print(player_stat_data_frame)  # Uncomment to debug
+    return player_stat_data_frame
 
 
 # Retrieve API and Database credentials from local .env file
@@ -134,5 +176,6 @@ headers = {
 
 teams_df = extract_teams()
 players_df = extract_players()
+player_stat_df = extract_player_stats()
 
 connection.close()
