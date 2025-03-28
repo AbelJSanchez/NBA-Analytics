@@ -130,6 +130,7 @@ def extract_player_stats() -> pd.DataFrame:
                 player_stat['season'] = season
                 player_stats.append(player_stat)
 
+    # Create DataFrame containing the selected columns
     player_stat_columns = ['player_id', 'game_id', 'team_id', 'season', 'points', 'pos', 'min', 'fgm',
                            'fga', 'fgp', 'ftm', 'fta', 'ftp', 'tpm', 'tpa', 'tpp', 'offReb', 'defReb', 'totReb', 'assists',
                            'pFouls', 'steals', 'turnovers', 'blocks', 'plusMinus']
@@ -175,7 +176,7 @@ headers = {
     }
 
 teams_df = extract_teams()
-players_df = extract_players()
+# players_df = extract_players()
 player_stat_df = extract_player_stats()
 
 connection.close()
