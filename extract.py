@@ -3,8 +3,14 @@ import os
 from dotenv import load_dotenv  # pip install python-dotenv
 import json
 import pandas as pd  # pip install pandas
-import math
+import time
 
+API_CALLS = 0  # Global variable that tracks the current number of API calls
+MAX_CALLS = 10  # The maximum number of API calls per minute
+
+pd.set_option('display.max_columns', None)  # Show all columns
+pd.set_option('display.width', None)  # Use maximum width of terminal
+pd.set_option('display.max_rows', None)  # Show all rows
 
 def extract_teams() -> pd.DataFrame:
     """
@@ -13,24 +19,30 @@ def extract_teams() -> pd.DataFrame:
     :return: A Pandas DataFrame containing NBA team information with the columns: name, nickname, code, city, logo
     """
     # Request team data from the API
+    
+    global API_CALLS
     connection.request("GET", "/teams?league=standard", headers=headers)
+    API_CALLS += 1
     response = connection.getresponse()
     data = response.read()
-
-    # Parse JSON response and filter for NBA franchises
-    teams = []
+    # print(data)  # Uncomment to debug
     json_data = json.loads(data)
+    teams = []
+
+    # Parse response and filter for NBA franchises
     for team in json_data['response']:
         if team.get('nbaFranchise') is True and team.get('allStar') is False:
-            team['conference'] = team['leagues']['standard'].get('conference')
-            team['division'] = team['leagues']['standard'].get('division')
+            team['team_id'] = team.get('id')
+            team['abv'] = team.get('code')
+            team['conference'] = team.get('leagues', {}).get('standard', {}).get('conference')
+            team['division'] = team.get('leagues', {}).get('standard', {}).get('division')
             teams.append(team)
 
     # Create DataFrame containing the selected columns
-    team_columns = ['name', 'nickname', 'code', 'city', 'conference', 'division']
-    data_frame = pd.DataFrame(teams)[team_columns]
-    print(data_frame.to_string())
-    return data_frame
+    team_columns = ['team_id', 'name', 'nickname', 'abv', 'city', 'conference', 'division']
+    team_data_frame = pd.DataFrame(teams)[team_columns]
+    # print(team_data_frame)  # Uncomment to debug
+    return team_data_frame
 
 
 def extract_players() -> pd.DataFrame:
@@ -38,50 +50,94 @@ def extract_players() -> pd.DataFrame:
     Extracts player data via the API.
 
     :return: A Pandas DataFrame containing NBA player information with the columns:
-                id, firstname, lastname, team, position, college, birthdate, rookie_year, height_feet,
+                id, firstname, lastname, position, college, birthdate, rookie_year, height_feet,
                 height_inches, weight_pounds, jersey_number
     """
-
-    # Request team data from the API - First API call
-    connection.request("GET", "/players?team=1&season=2021", headers=headers)
-    response = connection.getresponse()
-    data = response.read()
-    json_data = json.loads(data)
-    player_indexes = {}  #
-
-    # Parse JSON response for player info
+    global API_CALLS, MAX_CALLS
+    team_ids = teams_df['team_id'].tolist()
+    seasons = [2021, 2022, 2023]
     players = []
-    for i, player in enumerate(json_data['response']):
-        player_indexes[player.get('id')] = i  # Used when adding the player's team in the second API call
-        player['college'] = player.get('college')
-        player['birthdate'] = player['birth'].get('date')
-        player['rookie_year'] = "None" if player['nba'].get('start') == 0 else player['nba'].get('start')
-        player['height_feet'] = "None" if player['height'].get('feets') in (None, "None") else float(player['height'].get('feets'))
-        player['height_inches'] = "None" if player['height'].get('inches') in (None, "None") else float(player['height'].get('inches'))
-        player['weight_pounds'] = "None" if player['weight'].get('pounds') in (None, "None") else float(player['weight'].get('pounds'))
-        player['jersey_number'] = player.get('leagues', {}).get('standard', {}).get('jersey', "None")
-        player['position'] = player.get('leagues', {}).get('standard', {}).get('pos', "None")
-        player['team_id'] = "None"  # Team is updated in the second API call
-        players.append(player)
+    seen_players = set()
 
-    # Second API call - Retrieve team info for each player
-    connection.request("GET", "/players/statistics?team=1&season=2021", headers=headers)
-    response = connection.getresponse()
-    data = response.read()
-    json_data = json.loads(data)
-    for player_stat in json_data['response']:
-        player_id = player_stat['player'].get('id')
+    # API only allows us to query one season and one team at a time
+    for season in seasons:
+        for team_id in team_ids:
+            # API only allows 10 calls per minute
+            if API_CALLS == MAX_CALLS:
+                time.sleep(60)
+                API_CALLS = 0
 
-        if player_id in player_indexes:
-            index = player_indexes[player_id]
-            players[index]['team_id'] = player_stat.get('team', {}).get('id', "None")
+            # Request player data from the API
+            connection.request("GET", f"/players?season={season}&team={team_id}", headers=headers)
+            API_CALLS += 1
+            response = connection.getresponse()
+            data = response.read()
+            # print(data)  # Uncomment to debug
+            json_data = json.loads(data)
+
+            # Parse response for player info
+            for player in json_data['response']:
+                # Check to see if we've already added that player
+                if player.get('id') in seen_players:
+                    continue
+
+                # Add player to set and player dictionary
+                seen_players.add(player.get('id'))
+                player['player_id'] = pd.NA if player.get('id') is None else player.get('id')
+                player['school'] = pd.NA if player.get('college') is None else player.get('college')
+                player['birthdate'] = pd.NA if player['birth'].get('date') is None else player['birth'].get('date')
+                player['rookie_year'] = pd.NA if player['nba'].get('start') == 0 else player['nba'].get('start')
+                player['height_feet'] = pd.NA if player['height'].get('feets') is None else int(player['height'].get('feets'))
+                player['height_inches'] = pd.NA if player['height'].get('inches') is None else int(player['height'].get('inches'))
+                player['weight_pounds'] = pd.NA if player['weight'].get('pounds') is None else int(player['weight'].get('pounds'))
+                player['jersey_number'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('jersey') is None else player.get('leagues', {}).get('standard', {}).get('jersey')
+                player['position'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('pos') is None else player.get('leagues', {}).get('standard', {}).get('pos')
+                players.append(player)
 
     # Create DataFrame containing the selected columns
-    player_columns = ['id', 'firstname', 'lastname', 'team_id', 'position', 'college', 'birthdate', 'rookie_year', 'height_feet', 'height_inches', 'weight_pounds', 'jersey_number']
+    player_columns = ['player_id', 'firstname', 'lastname', 'position', 'school', 'birthdate', 'rookie_year', 'height_feet', 'height_inches', 'weight_pounds', 'jersey_number']
     player_data_frame = pd.DataFrame(players)[player_columns]
-    print(player_data_frame.to_string())
+    # print(player_data_frame)  # Uncomment to debug
     return player_data_frame
 
+
+def extract_player_stats() -> pd.DataFrame:
+    global API_CALLS, MAX_CALLS
+    player_stats = []
+    seasons = ['2021', '2022', '2023']
+    team_ids = teams_df['team_id'].tolist()
+
+    # API only allows us to query one season and one team at a time
+    for season in seasons:
+        for team_id in team_ids:
+            # API only allows 10 calls per minute
+            if API_CALLS == MAX_CALLS:
+                time.sleep(60)
+                API_CALLS = 0
+
+            # Request player stats from the API
+            connection.request("GET", f"/players/statistics?team={team_id}&season={season}", headers=headers)
+            API_CALLS += 1
+            response = connection.getresponse()
+            data = response.read()
+            json_data = json.loads(data)
+            # print(data)  # Uncomment to debug
+
+            # Parse response for player stats per game
+            for player_stat in json_data['response']:
+                player_stat['player_id'] = pd.NA if player_stat.get('player', {}).get('id') is None else player_stat.get('player', {}).get('id')
+                player_stat['game_id'] = pd.NA if player_stat.get('game', {}).get('id') is None else player_stat.get('game', {}).get('id')
+                player_stat['team_id'] = pd.NA if player_stat.get('team', {}).get('id') is None else player_stat.get('team', {}).get('id')
+                player_stat['season'] = season
+                player_stats.append(player_stat)
+
+    player_stat_columns = ['player_id', 'game_id', 'team_id', 'season', 'points', 'pos', 'min', 'fgm',
+                           'fga', 'fgp', 'ftm', 'fta', 'ftp', 'tpm', 'tpa', 'tpp', 'offReb', 'defReb', 'totReb', 'assists',
+                           'pFouls', 'steals', 'turnovers', 'blocks', 'plusMinus']
+    player_stat_data_frame = pd.DataFrame(player_stats)[player_stat_columns]
+    # print(player_stat_data_frame)  # Uncomment to debug
+    return player_stat_data_frame
+  
 
 def extract_games() -> pd.DataFrame:
     """
@@ -182,8 +238,10 @@ headers = {
     'x-rapidapi-key': API_KEY,
     }
 
-# teams_df = extract_teams()
-# players_df = extract_players()
+
+teams_df = extract_teams()
 games_df = extract_games()
+players_df = extract_players()
+player_stat_df = extract_player_stats()
 
 connection.close()
