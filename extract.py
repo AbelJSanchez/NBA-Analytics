@@ -12,9 +12,10 @@ pd.set_option('display.max_columns', None)  # Show all columns
 pd.set_option('display.width', None)  # Use maximum width of terminal
 pd.set_option('display.max_rows', None)  # Show all rows
 
+
 def extract_teams() -> pd.DataFrame:
     """
-    Extracts team data via the API, filtering for NBA franchise teams.
+    Extract team data via the API, filtering for NBA franchise teams.
 
     :return: A Pandas DataFrame containing NBA team information with the columns: name, nickname, code, city, logo
     """
@@ -38,12 +39,13 @@ def extract_teams() -> pd.DataFrame:
     # Create DataFrame containing the selected columns
     team_columns = ['team_id', 'name', 'nickname', 'code', 'city', 'conference', 'division']
     team_data_frame = pd.DataFrame(teams)[team_columns]
+    print(team_data_frame)
     return team_data_frame
 
 
 def extract_players() -> pd.DataFrame:
     """
-    Extracts player data via the API.
+    Extract player data via the API.
 
     :return: A Pandas DataFrame containing NBA player information with the columns:
                 id, firstname, lastname, position, college, birthdate, rookie_year, height_feet,
