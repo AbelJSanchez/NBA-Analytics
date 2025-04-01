@@ -72,11 +72,11 @@ def extract_players() -> pd.DataFrame:
                 API_CALLS = 0
 
             # Request player data from the API
-            api_connection.request("GET", f"/players?season={season}&team={team_id}", headers=headers)
+            api_connection.request("GET", f'/players?season={season}&team={team_id}', headers=headers)
             API_CALLS += 1
             response = api_connection.getresponse()
             data = response.read()
-            print(data)  # Uncomment to debug
+            # print(data)  # Uncomment to debug
             json_data = json.loads(data)
 
             # Parse response for player info
@@ -87,20 +87,20 @@ def extract_players() -> pd.DataFrame:
 
                 # Add player to set and player dictionary
                 seen_players.add(player.get('id'))
-                player['player_id'] = pd.NA if player.get('id') is None else player.get('id')
+                player['player_id'] = player.get('id')
                 player['school'] = pd.NA if player.get('college') is None else player.get('college')
                 player['birthdate'] = pd.NA if player['birth'].get('date') is None else player['birth'].get('date')
                 player['rookie_year'] = pd.NA if player['nba'].get('start') == 0 else player['nba'].get('start')
-                player['height_feet'] = pd.NA if player['height'].get('feets') is None else int(player['height'].get('feets'))
-                player['height_inches'] = pd.NA if player['height'].get('inches') is None else int(player['height'].get('inches'))
+                player['years_pro'] = pd.NA if player['nba'].get('pro') in [0, None] else player['nba'].get('pro')
+                player['height_inches'] = pd.NA if player['height'].get('feets') is None else (int(player['height'].get('feets')) * 12) + int(player['height'].get('inches'))
                 player['weight_pounds'] = pd.NA if player['weight'].get('pounds') is None else int(player['weight'].get('pounds'))
                 player['jersey_number'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('jersey') is None else player.get('leagues', {}).get('standard', {}).get('jersey')
                 players.append(player)
 
     # Create DataFrame containing the selected columns
-    player_columns = ['player_id', 'firstname', 'lastname', 'school', 'birthdate', 'rookie_year', 'height_feet', 'height_inches', 'weight_pounds', 'jersey_number']
+    player_columns = ['player_id', 'firstname', 'lastname', 'school', 'birthdate', 'rookie_year', 'years_pro', 'height_inches', 'weight_pounds', 'jersey_number']
     player_data_frame = pd.DataFrame(players)[player_columns]
-    print(player_data_frame)  # Uncomment to debug
+    # print(player_data_frame)  # Uncomment to debug
     return player_data_frame
 
 
@@ -133,9 +133,9 @@ def extract_player_stats() -> pd.DataFrame:
 
             # Parse response for player stats per game
             for player_stat in json_data['response']:
-                player_stat['player_id'] = pd.NA if player_stat.get('player', {}).get('id') is None else player_stat.get('player', {}).get('id')
-                player_stat['game_id'] = pd.NA if player_stat.get('game', {}).get('id') is None else player_stat.get('game', {}).get('id')
-                player_stat['team_id'] = pd.NA if player_stat.get('team', {}).get('id') is None else player_stat.get('team', {}).get('id')
+                player_stat['player_id'] = player_stat.get('player', {}).get('id')
+                player_stat['game_id'] = player_stat.get('game', {}).get('id')
+                player_stat['team_id'] = player_stat.get('team', {}).get('id')
                 player_stat['season'] = int(season)
                 player_stats.append(player_stat)
 
@@ -248,7 +248,7 @@ headers = {
 
 teams_df = extract_teams()
 # games_df = extract_games()
-# players_df = extract_players()
+players_df = extract_players()
 # player_stats_df = extract_player_stats()
 
 api_connection.close()
@@ -263,7 +263,7 @@ engine = create_engine(connection_string)
 
 teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
 # games_df.to_sql('games', con=engine, if_exists='append', index=False)
-# players_df.to_sql('players', con=engine, if_exists='append', index=False)
+players_df.to_sql('players', con=engine, if_exists='append', index=False)
 # player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
 
 
