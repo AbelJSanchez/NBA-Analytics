@@ -4,6 +4,7 @@ from dotenv import load_dotenv  # pip install python-dotenv
 import json
 import pandas as pd  # pip install pandas
 import time
+from sqlalchemy import create_engine
 
 API_CALLS = 0  # Global variable that tracks the current number of API calls
 MAX_CALLS = 10  # The maximum number of API calls per minute
@@ -33,13 +34,14 @@ def extract_teams() -> pd.DataFrame:
     for team in json_data['response']:
         if team.get('nbaFranchise') is True and team.get('allStar') is False:
             team['team_id'] = team.get('id')
+            team['mascot'] = team.get('nickname')
             team['abv'] = team.get('code')
             team['conference'] = team.get('leagues', {}).get('standard', {}).get('conference')
             team['division'] = team.get('leagues', {}).get('standard', {}).get('division')
             teams.append(team)
 
     # Create DataFrame containing the selected columns
-    team_columns = ['team_id', 'name', 'nickname', 'abv', 'city', 'conference', 'division']
+    team_columns = ['team_id', 'name', 'mascot', 'abv', 'city', 'conference', 'division']
     team_data_frame = pd.DataFrame(teams)[team_columns]
     # print(team_data_frame)  # Uncomment to debug
     return team_data_frame
@@ -158,37 +160,39 @@ def extract_games() -> pd.DataFrame:
         data = response.read()
 
         # Parse JSON response for game data
+        exclusions = [34, 90, 165, 169]
         json_data = json.loads(data)
         for game in json_data['response']:
-            game['id'] = game.get('id')
-            game['season'] = game.get('season')
-            game['duration'] = game['date'].get('duration') if game['date'].get('duration') is not None else pd.NA
-            game['date'] = game['date'].get('start')[5:10] + "-" + game['date'].get('start')[0:4]
-            game['arena_name'] = pd.NA if game['arena'].get('name') is None else game['arena'].get('name')
-            game['arena_location'] = pd.NA if game['arena'].get('city') is None \
-                else pd.NA if game['arena'].get('state') is None \
-                else game['arena'].get('city') + ", " + game['arena'].get('state')
-            game['home_team_id'] = game['teams']['home'].get('id')
-            game['home_team'] = game['teams']['home'].get('name')
-            game['visitor_team_id'] = game['teams']['visitors'].get('id')
-            game['visitor_team'] = game['teams']['visitors'].get('name')
-            game['winning_team'] = pd.NA if game['scores']['home'].get('points') is None \
-                else game['home_team'] if game['scores']['home'].get('points') > game['scores']['visitors'].get('points') \
-                else game['visitor_team']
-            game['overtime'] = 'Yes' if game['periods'].get('current') > 4 else 'No'
-            game['home_quarter_points'] = ""
-            for quarter in game['scores']['home']['linescore']:
-                game['home_quarter_points'] += quarter + ", "
-            game['home_quarter_points'] = game['home_quarter_points'][:-2]
-            game['home_points'] = game['scores']['home']['points'] if game['scores']['home']['points'] is not None else pd.NA
-            game['visitor_quarter_points'] = ""
-            for quarter in game['scores']['visitors']['linescore']:
-                game['visitor_quarter_points'] += quarter + ", "
-            game['visitor_quarter_points'] = game['visitor_quarter_points'][:-2]
-            game['visitor_points'] = game['scores']['visitors']['points'] if game['scores']['visitors']['points'] is not None else pd.NA
-            game['times_tied'] = game.get('timesTied') if game.get('timesTied') is not None else pd.NA
-            game['lead_changes'] = game.get('leadChanges') if game.get('leadChanges') is not None else pd.NA
-            games.append(game)
+            if game['teams']['visitors'].get('id') not in exclusions:
+                game['id'] = game.get('id')
+                game['season'] = game.get('season')
+                game['duration'] = game['date'].get('duration') if game['date'].get('duration') is not None else pd.NA
+                game['date'] = game['date'].get('start')[0:4] + "-" + game['date'].get('start')[5:10]
+                game['arena_name'] = pd.NA if game['arena'].get('name') is None else game['arena'].get('name')
+                game['arena_location'] = pd.NA if game['arena'].get('city') is None \
+                    else pd.NA if game['arena'].get('state') is None \
+                    else game['arena'].get('city') + ", " + game['arena'].get('state')
+                game['home_team_id'] = game['teams']['home'].get('id')
+                game['home_team'] = game['teams']['home'].get('name')
+                game['visitor_team_id'] = game['teams']['visitors'].get('id')
+                game['visitor_team'] = game['teams']['visitors'].get('name')
+                game['winning_team'] = pd.NA if game['scores']['home'].get('points') is None \
+                    else game['home_team'] if game['scores']['home'].get('points') > game['scores']['visitors'].get('points') \
+                    else game['visitor_team']
+                game['overtime'] = 'Yes' if game['periods'].get('current') > 4 else 'No'
+                game['home_quarter_points'] = ""
+                for quarter in game['scores']['home']['linescore']:
+                    game['home_quarter_points'] += quarter + ", "
+                game['home_quarter_points'] = game['home_quarter_points'][:-2]
+                game['home_points'] = game['scores']['home']['points'] if game['scores']['home']['points'] is not None else pd.NA
+                game['visitor_quarter_points'] = ""
+                for quarter in game['scores']['visitors']['linescore']:
+                    game['visitor_quarter_points'] += quarter + ", "
+                game['visitor_quarter_points'] = game['visitor_quarter_points'][:-2]
+                game['visitor_points'] = game['scores']['visitors']['points'] if game['scores']['visitors']['points'] is not None else pd.NA
+                game['times_tied'] = game.get('timesTied') if game.get('timesTied') is not None else pd.NA
+                game['lead_changes'] = game.get('leadChanges') if game.get('leadChanges') is not None else pd.NA
+                games.append(game)
 
     # Create DataFrame containing the selected columns
     game_columns = ['id', 'season', 'date', 'duration', 'arena_name', 'arena_location', 'home_team_id', 'home_team', 'visitor_team_id',
@@ -206,10 +210,10 @@ def extract_games() -> pd.DataFrame:
 load_dotenv()
 API_URL = os.getenv("API_URL")
 API_KEY = os.getenv("API_KEY")
-# DB_HOST = os.getenv("DB_HOST")
-# DB_USER = os.getenv("DB_USER")
-# DB_PW = os.getenv("DB_PASS")
-# DB_NAME = os.getenv("DB_NAME")
+DB_HOST = os.getenv("DB_HOST")
+DB_USER = os.getenv("DB_USER")
+DB_PW = os.getenv("DB_PW")
+DB_NAME = os.getenv("DB_NAME")
 
 # Verify API and DB credentials are present within the .env file
 if not API_URL:
@@ -219,17 +223,17 @@ if not API_KEY:
     raise ValueError("API_KEY not found in .env file. Please check your configuration.")
 
 # Database credentials commented out until created
-# if not DB_HOST:
-    # raise ValueError("DB_HOST not found in .env file. Please check your configuration.")
+if not DB_HOST:
+    raise ValueError("DB_HOST not found in .env file. Please check your configuration.")
 
-# if not DB_USER:
-    # raise ValueError("DB_USER not found in .env file. Please check your configuration.")
+if not DB_USER:
+    raise ValueError("DB_USER not found in .env file. Please check your configuration.")
 
-# if not DB_PW:
-    # raise ValueError("DB_PW not found in .env file. Please check your configuration.")
+if not DB_PW:
+    raise ValueError("DB_PW not found in .env file. Please check your configuration.")
 
-# if not DB_NAME:
-    # raise ValueError("DB_NAME not found in .env file. Please check your configuration.")
+if not DB_NAME:
+    raise ValueError("DB_NAME not found in .env file. Please check your configuration.")
 
 connection = http.client.HTTPSConnection(API_URL)
 
@@ -238,10 +242,18 @@ headers = {
     'x-rapidapi-key': API_KEY,
     }
 
-
-teams_df = extract_teams()
+#teams_df = extract_teams()
 games_df = extract_games()
-players_df = extract_players()
-player_stat_df = extract_player_stats()
+#players_df = extract_players()
+#player_stat_df = extract_player_stats()
 
 connection.close()
+
+
+connection_string = f'mysql+mysqlconnector://{DB_USER}:{DB_PW}@{DB_HOST}/{DB_NAME}'
+engine = create_engine(connection_string)
+
+#teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
+games_df.to_sql('games', con=engine, if_exists='append', index=False)
+#players_df.to_sql('players', con=engine, if_exists='append', index=False)
+#player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
