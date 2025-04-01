@@ -5,7 +5,6 @@ import json
 import pandas as pd  # pip install pandas
 import time
 from sqlalchemy import create_engine  # pip install sqlalchemy
-# import mysql.connector  # pip install mysql-connector-python
 
 API_CALLS = 0  # Global variable that tracks the current number of API calls
 MAX_CALLS = 10  # The maximum number of API calls per minute
