@@ -182,10 +182,10 @@ def extract_games() -> pd.DataFrame:
         # Parse JSON response for game data
         json_data = json.loads(data)
         for game in json_data['response']:
-            game['id'] = game.get('id')
+            game['game_id'] = game.get('id')
             game['season'] = game.get('season')
             game['duration'] = game['date'].get('duration') if game['date'].get('duration') is not None else pd.NA
-            game['date'] = game['date'].get('start')[5:10] + "-" + game['date'].get('start')[0:4]
+            game['date'] = game['date'].get('start')[0:10]
             game['arena_name'] = pd.NA if game['arena'].get('name') is None else game['arena'].get('name')
             game['arena_location'] = pd.NA if game['arena'].get('city') is None \
                 else pd.NA if game['arena'].get('state') is None \
@@ -213,7 +213,7 @@ def extract_games() -> pd.DataFrame:
             games.append(game)
 
     # Create DataFrame containing the selected columns
-    game_columns = ['id', 'season', 'date', 'duration', 'arena_name', 'arena_location', 'home_team_id', 'home_team', 'visitor_team_id',
+    game_columns = ['game_id', 'season', 'date', 'duration', 'arena_name', 'arena_location', 'home_team_id', 'home_team', 'visitor_team_id',
                     'visitor_team', 'winning_team', 'overtime', 'home_quarter_points', 'home_points', 'visitor_quarter_points', 'visitor_points',
                     'times_tied', 'lead_changes']
     game_data_frame = pd.DataFrame(games)[game_columns]
