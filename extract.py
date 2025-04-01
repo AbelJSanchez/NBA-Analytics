@@ -4,7 +4,7 @@ from dotenv import load_dotenv  # pip install python-dotenv
 import json
 import pandas as pd  # pip install pandas
 import time
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine  # pip install sqlalchemy
 
 API_CALLS = 0  # Global variable that tracks the current number of API calls
 MAX_CALLS = 10  # The maximum number of API calls per minute
@@ -12,6 +12,7 @@ MAX_CALLS = 10  # The maximum number of API calls per minute
 pd.set_option('display.max_columns', None)  # Show all columns
 pd.set_option('display.width', None)  # Use maximum width of terminal
 pd.set_option('display.max_rows', None)  # Show all rows
+
 
 def extract_teams() -> pd.DataFrame:
     """
@@ -22,9 +23,9 @@ def extract_teams() -> pd.DataFrame:
     # Request team data from the API
     
     global API_CALLS
-    connection.request("GET", "/teams?league=standard", headers=headers)
+    api_connection.request("GET", "/teams?league=standard", headers=headers)
     API_CALLS += 1
-    response = connection.getresponse()
+    response = api_connection.getresponse()
     data = response.read()
     # print(data)  # Uncomment to debug
     json_data = json.loads(data)
@@ -70,9 +71,9 @@ def extract_players() -> pd.DataFrame:
                 API_CALLS = 0
 
             # Request player data from the API
-            connection.request("GET", f"/players?season={season}&team={team_id}", headers=headers)
+            api_connection.request("GET", f'/players?season={season}&team={team_id}', headers=headers)
             API_CALLS += 1
-            response = connection.getresponse()
+            response = api_connection.getresponse()
             data = response.read()
             # print(data)  # Uncomment to debug
             json_data = json.loads(data)
@@ -85,25 +86,29 @@ def extract_players() -> pd.DataFrame:
 
                 # Add player to set and player dictionary
                 seen_players.add(player.get('id'))
-                player['player_id'] = pd.NA if player.get('id') is None else player.get('id')
+                player['player_id'] = player.get('id')
                 player['school'] = pd.NA if player.get('college') is None else player.get('college')
                 player['birthdate'] = pd.NA if player['birth'].get('date') is None else player['birth'].get('date')
                 player['rookie_year'] = pd.NA if player['nba'].get('start') == 0 else player['nba'].get('start')
-                player['height_feet'] = pd.NA if player['height'].get('feets') is None else int(player['height'].get('feets'))
-                player['height_inches'] = pd.NA if player['height'].get('inches') is None else int(player['height'].get('inches'))
-                player['weight_pounds'] = pd.NA if player['weight'].get('pounds') is None else int(player['weight'].get('pounds'))
+                player['years_pro'] = pd.NA if player['nba'].get('pro') in [0, None] else player['nba'].get('pro')
+                player['height'] = pd.NA if player['height'].get('feets') is None else (int(player['height'].get('feets')) * 12) + int(player['height'].get('inches'))
+                player['weight'] = pd.NA if player['weight'].get('pounds') is None else int(player['weight'].get('pounds'))
                 player['jersey_number'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('jersey') is None else player.get('leagues', {}).get('standard', {}).get('jersey')
-                player['position'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('pos') is None else player.get('leagues', {}).get('standard', {}).get('pos')
                 players.append(player)
 
     # Create DataFrame containing the selected columns
-    player_columns = ['player_id', 'firstname', 'lastname', 'position', 'school', 'birthdate', 'rookie_year', 'height_feet', 'height_inches', 'weight_pounds', 'jersey_number']
+    player_columns = ['player_id', 'firstname', 'lastname', 'school', 'birthdate', 'rookie_year', 'years_pro', 'height', 'weight', 'jersey_number']
     player_data_frame = pd.DataFrame(players)[player_columns]
     # print(player_data_frame)  # Uncomment to debug
     return player_data_frame
 
 
 def extract_player_stats() -> pd.DataFrame:
+    """
+    Extracts player stat data via the API.
+
+    :return: A Pandas DataFrame containing NBA player statistics
+    """
     global API_CALLS, MAX_CALLS
     player_stats = []
     seasons = ['2021', '2022', '2023']
@@ -118,24 +123,38 @@ def extract_player_stats() -> pd.DataFrame:
                 API_CALLS = 0
 
             # Request player stats from the API
-            connection.request("GET", f"/players/statistics?team={team_id}&season={season}", headers=headers)
+            api_connection.request("GET", f"/players/statistics?team={team_id}&season={season}", headers=headers)
             API_CALLS += 1
-            response = connection.getresponse()
+            response = api_connection.getresponse()
             data = response.read()
             json_data = json.loads(data)
             # print(data)  # Uncomment to debug
 
             # Parse response for player stats per game
             for player_stat in json_data['response']:
-                player_stat['player_id'] = pd.NA if player_stat.get('player', {}).get('id') is None else player_stat.get('player', {}).get('id')
-                player_stat['game_id'] = pd.NA if player_stat.get('game', {}).get('id') is None else player_stat.get('game', {}).get('id')
-                player_stat['team_id'] = pd.NA if player_stat.get('team', {}).get('id') is None else player_stat.get('team', {}).get('id')
+                # if the player did not play in the game
+                if player_stat.get('min') == '--':
+                    continue
+                player_stat['player_id'] = player_stat.get('player', {}).get('id')
+                player_stat['game_id'] = player_stat.get('game', {}).get('id')
+                player_stat['team_id'] = player_stat.get('team', {}).get('id')
                 player_stat['season'] = season
+                player_stat['position'] = player_stat.get('pos')
+                player_stat['minutes_played'] = int(player_stat.get('min'))
+                player_stat['fgp'] = float(player_stat.get('fgp'))
+                player_stat['ftp'] = float(player_stat.get('ftp'))
+                player_stat['tpp'] = float(player_stat.get('tpp'))
+                player_stat['position'] = pd.NA if player_stat.get('pos') is None else player_stat.get('pos')
+                player_stat['off_reb'] = player_stat.get('offReb')
+                player_stat['def_reb'] = player_stat.get('defReb')
+                player_stat['tot_reb'] = player_stat.get('totReb')
+                player_stat['p_fouls'] = player_stat.get('pFouls')
+                player_stat['plus_minus'] = 0 if player_stat.get('plusMinus') == '--' else int(player_stat.get('plusMinus'))
                 player_stats.append(player_stat)
 
-    player_stat_columns = ['player_id', 'game_id', 'team_id', 'season', 'points', 'pos', 'min', 'fgm',
-                           'fga', 'fgp', 'ftm', 'fta', 'ftp', 'tpm', 'tpa', 'tpp', 'offReb', 'defReb', 'totReb', 'assists',
-                           'pFouls', 'steals', 'turnovers', 'blocks', 'plusMinus']
+    player_stat_columns = ['player_id', 'game_id', 'team_id', 'season', 'points', 'position', 'minutes_played', 'fgm',
+                           'fga', 'fgp', 'ftm', 'fta', 'ftp', 'tpm', 'tpa', 'tpp', 'off_reb', 'def_reb', 'tot_reb', 'assists',
+                           'p_fouls', 'steals', 'turnovers', 'blocks', 'plus_minus']
     player_stat_data_frame = pd.DataFrame(player_stats)[player_stat_columns]
     # print(player_stat_data_frame)  # Uncomment to debug
     return player_stat_data_frame
@@ -155,8 +174,8 @@ def extract_games() -> pd.DataFrame:
     seasons = ['2021', '2022', '2023']
     for season in seasons:
         endpoint = '/games?league=standard&season=' + season
-        connection.request("GET", endpoint, headers=headers)
-        response = connection.getresponse()
+        api_connection.request("GET", endpoint, headers=headers)
+        response = api_connection.getresponse()
         data = response.read()
 
         # Parse JSON response for game data
@@ -195,7 +214,7 @@ def extract_games() -> pd.DataFrame:
                 games.append(game)
 
     # Create DataFrame containing the selected columns
-    game_columns = ['id', 'season', 'date', 'duration', 'arena_name', 'arena_location', 'home_team_id', 'home_team', 'visitor_team_id',
+    game_columns = ['game_id', 'season', 'date', 'duration', 'arena_name', 'arena_location', 'home_team_id', 'home_team', 'visitor_team_id',
                     'visitor_team', 'winning_team', 'overtime', 'home_quarter_points', 'home_points', 'visitor_quarter_points', 'visitor_points',
                     'times_tied', 'lead_changes']
     game_data_frame = pd.DataFrame(games)[game_columns]
@@ -203,8 +222,9 @@ def extract_games() -> pd.DataFrame:
     # Drop postponed / canceled / unfulfilled playoff games
     game_data_frame.dropna(subset=['home_points', 'visitor_points'], inplace=True)
     game_data_frame.reset_index(drop=True, inplace=True)
-    print(game_data_frame.to_string())
+    # print(game_data_frame.to_string())  # Uncomment to debug
     return game_data_frame
+
 
 # Retrieve API and Database credentials from local .env file
 load_dotenv()
@@ -222,7 +242,6 @@ if not API_URL:
 if not API_KEY:
     raise ValueError("API_KEY not found in .env file. Please check your configuration.")
 
-# Database credentials commented out until created
 if not DB_HOST:
     raise ValueError("DB_HOST not found in .env file. Please check your configuration.")
 
@@ -235,25 +254,31 @@ if not DB_PW:
 if not DB_NAME:
     raise ValueError("DB_NAME not found in .env file. Please check your configuration.")
 
-connection = http.client.HTTPSConnection(API_URL)
+# API connection and data extraction (EXTRACT/TRANSFORM)
+api_connection = http.client.HTTPSConnection(API_URL)
 
 headers = {
     'x-rapidapi-host': API_URL,
     'x-rapidapi-key': API_KEY,
     }
 
-#teams_df = extract_teams()
+teams_df = extract_teams()
 games_df = extract_games()
-#players_df = extract_players()
-#player_stat_df = extract_player_stats()
+players_df = extract_players()
+player_stats_df = extract_player_stats()
 
-connection.close()
+api_connection.close()
 
+host = DB_HOST
+user = DB_USER
+passwd = DB_PW
+database = DB_NAME
 
-connection_string = f'mysql+mysqlconnector://{DB_USER}:{DB_PW}@{DB_HOST}/{DB_NAME}'
+# Database connection and data insertion (LOAD)
+connection_string = f'mysql+mysqlconnector://{user}:{passwd}@{host}/{database}'
 engine = create_engine(connection_string)
 
-#teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
+teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
 games_df.to_sql('games', con=engine, if_exists='append', index=False)
-#players_df.to_sql('players', con=engine, if_exists='append', index=False)
-#player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
+players_df.to_sql('players', con=engine, if_exists='append', index=False)
+player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
