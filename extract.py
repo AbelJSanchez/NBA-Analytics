@@ -92,13 +92,13 @@ def extract_players() -> pd.DataFrame:
                 player['birthdate'] = pd.NA if player['birth'].get('date') is None else player['birth'].get('date')
                 player['rookie_year'] = pd.NA if player['nba'].get('start') == 0 else player['nba'].get('start')
                 player['years_pro'] = pd.NA if player['nba'].get('pro') in [0, None] else player['nba'].get('pro')
-                player['height_inches'] = pd.NA if player['height'].get('feets') is None else (int(player['height'].get('feets')) * 12) + int(player['height'].get('inches'))
-                player['weight_pounds'] = pd.NA if player['weight'].get('pounds') is None else int(player['weight'].get('pounds'))
+                player['height'] = pd.NA if player['height'].get('feets') is None else (int(player['height'].get('feets')) * 12) + int(player['height'].get('inches'))
+                player['weight'] = pd.NA if player['weight'].get('pounds') is None else int(player['weight'].get('pounds'))
                 player['jersey_number'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('jersey') is None else player.get('leagues', {}).get('standard', {}).get('jersey')
                 players.append(player)
 
     # Create DataFrame containing the selected columns
-    player_columns = ['player_id', 'firstname', 'lastname', 'school', 'birthdate', 'rookie_year', 'years_pro', 'height_inches', 'weight_pounds', 'jersey_number']
+    player_columns = ['player_id', 'firstname', 'lastname', 'school', 'birthdate', 'rookie_year', 'years_pro', 'height', 'weight', 'jersey_number']
     player_data_frame = pd.DataFrame(players)[player_columns]
     # print(player_data_frame)  # Uncomment to debug
     return player_data_frame
@@ -133,15 +133,29 @@ def extract_player_stats() -> pd.DataFrame:
 
             # Parse response for player stats per game
             for player_stat in json_data['response']:
+                # if the player did not play in the game
+                if player_stat.get('min') == '--':
+                    continue
                 player_stat['player_id'] = player_stat.get('player', {}).get('id')
                 player_stat['game_id'] = player_stat.get('game', {}).get('id')
                 player_stat['team_id'] = player_stat.get('team', {}).get('id')
-                player_stat['season'] = int(season)
+                player_stat['season'] = season
+                player_stat['position'] = player_stat.get('pos')
+                player_stat['minutes_played'] = int(player_stat.get('min'))
+                player_stat['fgp'] = float(player_stat.get('fgp'))
+                player_stat['ftp'] = float(player_stat.get('ftp'))
+                player_stat['tpp'] = float(player_stat.get('tpp'))
+                player_stat['position'] = pd.NA if player_stat.get('pos') is None else player_stat.get('pos')
+                player_stat['off_reb'] = player_stat.get('offReb')
+                player_stat['def_reb'] = player_stat.get('defReb')
+                player_stat['tot_reb'] = player_stat.get('totReb')
+                player_stat['p_fouls'] = player_stat.get('pFouls')
+                player_stat['plus_minus'] = 0 if player_stat.get('plusMinus') == '--' else int(player_stat.get('plusMinus'))
                 player_stats.append(player_stat)
 
-    player_stat_columns = ['player_id', 'game_id', 'team_id', 'season', 'points', 'pos', 'min', 'fgm',
-                           'fga', 'fgp', 'ftm', 'fta', 'ftp', 'tpm', 'tpa', 'tpp', 'offReb', 'defReb', 'totReb', 'assists',
-                           'pFouls', 'steals', 'turnovers', 'blocks', 'plusMinus']
+    player_stat_columns = ['player_id', 'game_id', 'team_id', 'season', 'points', 'position', 'minutes_played', 'fgm',
+                           'fga', 'fgp', 'ftm', 'fta', 'ftp', 'tpm', 'tpa', 'tpp', 'off_reb', 'def_reb', 'tot_reb', 'assists',
+                           'p_fouls', 'steals', 'turnovers', 'blocks', 'plus_minus']
     player_stat_data_frame = pd.DataFrame(player_stats)[player_stat_columns]
     # print(player_stat_data_frame)  # Uncomment to debug
     return player_stat_data_frame
@@ -239,6 +253,7 @@ if not DB_PW:
 if not DB_NAME:
     raise ValueError("DB_NAME not found in .env file. Please check your configuration.")
 
+# API connection and data extraction (EXTRACT/TRANSFORM)
 api_connection = http.client.HTTPSConnection(API_URL)
 
 headers = {
@@ -247,9 +262,9 @@ headers = {
     }
 
 teams_df = extract_teams()
-# games_df = extract_games()
+games_df = extract_games()
 players_df = extract_players()
-# player_stats_df = extract_player_stats()
+player_stats_df = extract_player_stats()
 
 api_connection.close()
 
@@ -258,13 +273,11 @@ user = DB_USER
 passwd = DB_PW
 database = DB_NAME
 
+# Database connection and data insertion (LOAD)
 connection_string = f'mysql+mysqlconnector://{user}:{passwd}@{host}/{database}'
 engine = create_engine(connection_string)
 
 teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
-# games_df.to_sql('games', con=engine, if_exists='append', index=False)
+games_df.to_sql('games', con=engine, if_exists='append', index=False)
 players_df.to_sql('players', con=engine, if_exists='append', index=False)
-# player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
-
-
-
+player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
