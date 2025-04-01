@@ -160,37 +160,39 @@ def extract_games() -> pd.DataFrame:
         data = response.read()
 
         # Parse JSON response for game data
+        exclusions = [34, 90, 165, 169]
         json_data = json.loads(data)
         for game in json_data['response']:
-            game['id'] = game.get('id')
-            game['season'] = game.get('season')
-            game['duration'] = game['date'].get('duration') if game['date'].get('duration') is not None else pd.NA
-            game['date'] = game['date'].get('start')[0:4] + "-" + game['date'].get('start')[5:10]
-            game['arena_name'] = pd.NA if game['arena'].get('name') is None else game['arena'].get('name')
-            game['arena_location'] = pd.NA if game['arena'].get('city') is None \
-                else pd.NA if game['arena'].get('state') is None \
-                else game['arena'].get('city') + ", " + game['arena'].get('state')
-            game['home_team_id'] = game['teams']['home'].get('id')
-            game['home_team'] = game['teams']['home'].get('name')
-            game['visitor_team_id'] = game['teams']['visitors'].get('id')
-            game['visitor_team'] = game['teams']['visitors'].get('name')
-            game['winning_team'] = pd.NA if game['scores']['home'].get('points') is None \
-                else game['home_team'] if game['scores']['home'].get('points') > game['scores']['visitors'].get('points') \
-                else game['visitor_team']
-            game['overtime'] = 'Yes' if game['periods'].get('current') > 4 else 'No'
-            game['home_quarter_points'] = ""
-            for quarter in game['scores']['home']['linescore']:
-                game['home_quarter_points'] += quarter + ", "
-            game['home_quarter_points'] = game['home_quarter_points'][:-2]
-            game['home_points'] = game['scores']['home']['points'] if game['scores']['home']['points'] is not None else pd.NA
-            game['visitor_quarter_points'] = ""
-            for quarter in game['scores']['visitors']['linescore']:
-                game['visitor_quarter_points'] += quarter + ", "
-            game['visitor_quarter_points'] = game['visitor_quarter_points'][:-2]
-            game['visitor_points'] = game['scores']['visitors']['points'] if game['scores']['visitors']['points'] is not None else pd.NA
-            game['times_tied'] = game.get('timesTied') if game.get('timesTied') is not None else pd.NA
-            game['lead_changes'] = game.get('leadChanges') if game.get('leadChanges') is not None else pd.NA
-            games.append(game)
+            if game['teams']['visitors'].get('id') not in exclusions:
+                game['id'] = game.get('id')
+                game['season'] = game.get('season')
+                game['duration'] = game['date'].get('duration') if game['date'].get('duration') is not None else pd.NA
+                game['date'] = game['date'].get('start')[0:4] + "-" + game['date'].get('start')[5:10]
+                game['arena_name'] = pd.NA if game['arena'].get('name') is None else game['arena'].get('name')
+                game['arena_location'] = pd.NA if game['arena'].get('city') is None \
+                    else pd.NA if game['arena'].get('state') is None \
+                    else game['arena'].get('city') + ", " + game['arena'].get('state')
+                game['home_team_id'] = game['teams']['home'].get('id')
+                game['home_team'] = game['teams']['home'].get('name')
+                game['visitor_team_id'] = game['teams']['visitors'].get('id')
+                game['visitor_team'] = game['teams']['visitors'].get('name')
+                game['winning_team'] = pd.NA if game['scores']['home'].get('points') is None \
+                    else game['home_team'] if game['scores']['home'].get('points') > game['scores']['visitors'].get('points') \
+                    else game['visitor_team']
+                game['overtime'] = 'Yes' if game['periods'].get('current') > 4 else 'No'
+                game['home_quarter_points'] = ""
+                for quarter in game['scores']['home']['linescore']:
+                    game['home_quarter_points'] += quarter + ", "
+                game['home_quarter_points'] = game['home_quarter_points'][:-2]
+                game['home_points'] = game['scores']['home']['points'] if game['scores']['home']['points'] is not None else pd.NA
+                game['visitor_quarter_points'] = ""
+                for quarter in game['scores']['visitors']['linescore']:
+                    game['visitor_quarter_points'] += quarter + ", "
+                game['visitor_quarter_points'] = game['visitor_quarter_points'][:-2]
+                game['visitor_points'] = game['scores']['visitors']['points'] if game['scores']['visitors']['points'] is not None else pd.NA
+                game['times_tied'] = game.get('timesTied') if game.get('timesTied') is not None else pd.NA
+                game['lead_changes'] = game.get('leadChanges') if game.get('leadChanges') is not None else pd.NA
+                games.append(game)
 
     # Create DataFrame containing the selected columns
     game_columns = ['id', 'season', 'date', 'duration', 'arena_name', 'arena_location', 'home_team_id', 'home_team', 'visitor_team_id',
@@ -241,7 +243,7 @@ headers = {
     }
 
 #teams_df = extract_teams()
-#games_df = extract_games()
+games_df = extract_games()
 #players_df = extract_players()
 #player_stat_df = extract_player_stats()
 
@@ -252,6 +254,6 @@ connection_string = f'mysql+mysqlconnector://{DB_USER}:{DB_PW}@{DB_HOST}/{DB_NAM
 engine = create_engine(connection_string)
 
 #teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
-#games_df.to_sql('games', con=engine, if_exists='append', index=False)
+games_df.to_sql('games', con=engine, if_exists='append', index=False)
 #players_df.to_sql('players', con=engine, if_exists='append', index=False)
 #player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
