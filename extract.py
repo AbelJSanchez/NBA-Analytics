@@ -4,6 +4,8 @@ from dotenv import load_dotenv  # pip install python-dotenv
 import json
 import pandas as pd  # pip install pandas
 import time
+from sqlalchemy import create_engine  # pip install sqlalchemy
+# import mysql.connector  # pip install mysql-connector-python
 
 API_CALLS = 0  # Global variable that tracks the current number of API calls
 MAX_CALLS = 10  # The maximum number of API calls per minute
@@ -11,6 +13,7 @@ MAX_CALLS = 10  # The maximum number of API calls per minute
 pd.set_option('display.max_columns', None)  # Show all columns
 pd.set_option('display.width', None)  # Use maximum width of terminal
 pd.set_option('display.max_rows', None)  # Show all rows
+
 
 def extract_teams() -> pd.DataFrame:
     """
@@ -21,9 +24,9 @@ def extract_teams() -> pd.DataFrame:
     # Request team data from the API
     
     global API_CALLS
-    connection.request("GET", "/teams?league=standard", headers=headers)
+    api_connection.request("GET", "/teams?league=standard", headers=headers)
     API_CALLS += 1
-    response = connection.getresponse()
+    response = api_connection.getresponse()
     data = response.read()
     # print(data)  # Uncomment to debug
     json_data = json.loads(data)
@@ -33,13 +36,14 @@ def extract_teams() -> pd.DataFrame:
     for team in json_data['response']:
         if team.get('nbaFranchise') is True and team.get('allStar') is False:
             team['team_id'] = team.get('id')
+            team['mascot'] = team.get('nickname')
             team['abv'] = team.get('code')
             team['conference'] = team.get('leagues', {}).get('standard', {}).get('conference')
             team['division'] = team.get('leagues', {}).get('standard', {}).get('division')
             teams.append(team)
 
     # Create DataFrame containing the selected columns
-    team_columns = ['team_id', 'name', 'nickname', 'abv', 'city', 'conference', 'division']
+    team_columns = ['team_id', 'name', 'mascot', 'abv', 'city', 'conference', 'division']
     team_data_frame = pd.DataFrame(teams)[team_columns]
     # print(team_data_frame)  # Uncomment to debug
     return team_data_frame
@@ -68,11 +72,11 @@ def extract_players() -> pd.DataFrame:
                 API_CALLS = 0
 
             # Request player data from the API
-            connection.request("GET", f"/players?season={season}&team={team_id}", headers=headers)
+            api_connection.request("GET", f"/players?season={season}&team={team_id}", headers=headers)
             API_CALLS += 1
-            response = connection.getresponse()
+            response = api_connection.getresponse()
             data = response.read()
-            # print(data)  # Uncomment to debug
+            print(data)  # Uncomment to debug
             json_data = json.loads(data)
 
             # Parse response for player info
@@ -91,17 +95,21 @@ def extract_players() -> pd.DataFrame:
                 player['height_inches'] = pd.NA if player['height'].get('inches') is None else int(player['height'].get('inches'))
                 player['weight_pounds'] = pd.NA if player['weight'].get('pounds') is None else int(player['weight'].get('pounds'))
                 player['jersey_number'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('jersey') is None else player.get('leagues', {}).get('standard', {}).get('jersey')
-                player['position'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('pos') is None else player.get('leagues', {}).get('standard', {}).get('pos')
                 players.append(player)
 
     # Create DataFrame containing the selected columns
-    player_columns = ['player_id', 'firstname', 'lastname', 'position', 'school', 'birthdate', 'rookie_year', 'height_feet', 'height_inches', 'weight_pounds', 'jersey_number']
+    player_columns = ['player_id', 'firstname', 'lastname', 'school', 'birthdate', 'rookie_year', 'height_feet', 'height_inches', 'weight_pounds', 'jersey_number']
     player_data_frame = pd.DataFrame(players)[player_columns]
-    # print(player_data_frame)  # Uncomment to debug
+    print(player_data_frame)  # Uncomment to debug
     return player_data_frame
 
 
 def extract_player_stats() -> pd.DataFrame:
+    """
+    Extracts player stat data via the API.
+
+    :return: A Pandas DataFrame containing NBA player statistics
+    """
     global API_CALLS, MAX_CALLS
     player_stats = []
     seasons = ['2021', '2022', '2023']
@@ -116,9 +124,9 @@ def extract_player_stats() -> pd.DataFrame:
                 API_CALLS = 0
 
             # Request player stats from the API
-            connection.request("GET", f"/players/statistics?team={team_id}&season={season}", headers=headers)
+            api_connection.request("GET", f"/players/statistics?team={team_id}&season={season}", headers=headers)
             API_CALLS += 1
-            response = connection.getresponse()
+            response = api_connection.getresponse()
             data = response.read()
             json_data = json.loads(data)
             # print(data)  # Uncomment to debug
@@ -128,7 +136,7 @@ def extract_player_stats() -> pd.DataFrame:
                 player_stat['player_id'] = pd.NA if player_stat.get('player', {}).get('id') is None else player_stat.get('player', {}).get('id')
                 player_stat['game_id'] = pd.NA if player_stat.get('game', {}).get('id') is None else player_stat.get('game', {}).get('id')
                 player_stat['team_id'] = pd.NA if player_stat.get('team', {}).get('id') is None else player_stat.get('team', {}).get('id')
-                player_stat['season'] = season
+                player_stat['season'] = int(season)
                 player_stats.append(player_stat)
 
     player_stat_columns = ['player_id', 'game_id', 'team_id', 'season', 'points', 'pos', 'min', 'fgm',
@@ -153,8 +161,8 @@ def extract_games() -> pd.DataFrame:
     seasons = ['2021', '2022', '2023']
     for season in seasons:
         endpoint = '/games?league=standard&season=' + season
-        connection.request("GET", endpoint, headers=headers)
-        response = connection.getresponse()
+        api_connection.request("GET", endpoint, headers=headers)
+        response = api_connection.getresponse()
         data = response.read()
 
         # Parse JSON response for game data
@@ -199,17 +207,18 @@ def extract_games() -> pd.DataFrame:
     # Drop postponed / canceled / unfulfilled playoff games
     game_data_frame.dropna(subset=['home_points', 'visitor_points'], inplace=True)
     game_data_frame.reset_index(drop=True, inplace=True)
-    print(game_data_frame.to_string())
+    # print(game_data_frame.to_string())  # Uncomment to debug
     return game_data_frame
+
 
 # Retrieve API and Database credentials from local .env file
 load_dotenv()
 API_URL = os.getenv("API_URL")
 API_KEY = os.getenv("API_KEY")
-# DB_HOST = os.getenv("DB_HOST")
-# DB_USER = os.getenv("DB_USER")
-# DB_PW = os.getenv("DB_PASS")
-# DB_NAME = os.getenv("DB_NAME")
+DB_HOST = os.getenv("DB_HOST")
+DB_USER = os.getenv("DB_USER")
+DB_PW = os.getenv("DB_PW")
+DB_NAME = os.getenv("DB_NAME")
 
 # Verify API and DB credentials are present within the .env file
 if not API_URL:
@@ -218,30 +227,44 @@ if not API_URL:
 if not API_KEY:
     raise ValueError("API_KEY not found in .env file. Please check your configuration.")
 
-# Database credentials commented out until created
-# if not DB_HOST:
-    # raise ValueError("DB_HOST not found in .env file. Please check your configuration.")
+if not DB_HOST:
+    raise ValueError("DB_HOST not found in .env file. Please check your configuration.")
 
-# if not DB_USER:
-    # raise ValueError("DB_USER not found in .env file. Please check your configuration.")
+if not DB_USER:
+    raise ValueError("DB_USER not found in .env file. Please check your configuration.")
 
-# if not DB_PW:
-    # raise ValueError("DB_PW not found in .env file. Please check your configuration.")
+if not DB_PW:
+    raise ValueError("DB_PW not found in .env file. Please check your configuration.")
 
-# if not DB_NAME:
-    # raise ValueError("DB_NAME not found in .env file. Please check your configuration.")
+if not DB_NAME:
+    raise ValueError("DB_NAME not found in .env file. Please check your configuration.")
 
-connection = http.client.HTTPSConnection(API_URL)
+api_connection = http.client.HTTPSConnection(API_URL)
 
 headers = {
     'x-rapidapi-host': API_URL,
     'x-rapidapi-key': API_KEY,
     }
 
-
 teams_df = extract_teams()
-games_df = extract_games()
-players_df = extract_players()
-player_stat_df = extract_player_stats()
+# games_df = extract_games()
+# players_df = extract_players()
+# player_stats_df = extract_player_stats()
 
-connection.close()
+api_connection.close()
+
+host = DB_HOST
+user = DB_USER
+passwd = DB_PW
+database = DB_NAME
+
+connection_string = f'mysql+mysqlconnector://{user}:{passwd}@{host}/{database}'
+engine = create_engine(connection_string)
+
+teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
+# games_df.to_sql('games', con=engine, if_exists='append', index=False)
+# players_df.to_sql('players', con=engine, if_exists='append', index=False)
+# player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
+
+
+
