@@ -183,7 +183,7 @@ def extract_games() -> pd.DataFrame:
         json_data = json.loads(data)
         for game in json_data['response']:
             if game['teams']['visitors'].get('id') not in exclusions:
-                game['id'] = game.get('id')
+                game['game_id'] = game.get('id')
                 game['season'] = game.get('season')
                 game['duration'] = game['date'].get('duration') if game['date'].get('duration') is not None else pd.NA
                 game['date'] = game['date'].get('start')[0:4] + "-" + game['date'].get('start')[5:10]
@@ -262,10 +262,10 @@ headers = {
     'x-rapidapi-key': API_KEY,
     }
 
-teams_df = extract_teams()
+#teams_df = extract_teams()
 games_df = extract_games()
-players_df = extract_players()
-player_stats_df = extract_player_stats()
+#players_df = extract_players()
+#player_stats_df = extract_player_stats()
 
 api_connection.close()
 
@@ -278,7 +278,7 @@ database = DB_NAME
 connection_string = f'mysql+mysqlconnector://{user}:{passwd}@{host}/{database}'
 engine = create_engine(connection_string)
 
-teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
+#teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
 games_df.to_sql('games', con=engine, if_exists='append', index=False)
-players_df.to_sql('players', con=engine, if_exists='append', index=False)
-player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
+#players_df.to_sql('players', con=engine, if_exists='append', index=False)
+#player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
