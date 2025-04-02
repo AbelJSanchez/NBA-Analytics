@@ -72,7 +72,7 @@ def extract_players() -> pd.DataFrame:
             API_CALLS += 1
             response = connection.getresponse()
             data = response.read()
-            # print(data)  # Uncomment to debug
+            print(data)  # Uncomment to debug
             json_data = json.loads(data)
 
             # Parse response for player info
@@ -97,7 +97,7 @@ def extract_players() -> pd.DataFrame:
     # Create DataFrame containing the selected columns
     player_columns = ['player_id', 'firstname', 'lastname', 'position', 'school', 'birthdate', 'rookie_year', 'height_feet', 'height_inches', 'weight_pounds', 'jersey_number']
     player_data_frame = pd.DataFrame(players)[player_columns]
-    # print(player_data_frame)  # Uncomment to debug
+    print(player_data_frame)  # Uncomment to debug
     return player_data_frame
 
 
@@ -240,8 +240,8 @@ headers = {
 
 
 teams_df = extract_teams()
-games_df = extract_games()
+# games_df = extract_games()
 players_df = extract_players()
-player_stat_df = extract_player_stats()
+# player_stat_df = extract_player_stats()
 
 connection.close()
