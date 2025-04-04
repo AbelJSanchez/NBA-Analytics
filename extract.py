@@ -7,7 +7,7 @@ import time
 from sqlalchemy import create_engine  # pip install sqlalchemy
 
 API_CALLS = 0  # Global variable that tracks the current number of API calls
-MAX_CALLS = 10  # The maximum number of API calls per minute
+MAX_CALLS = 350  # The maximum number of API calls per minute
 
 pd.set_option('display.max_columns', None)  # Show all columns
 pd.set_option('display.width', None)  # Use maximum width of terminal
@@ -91,9 +91,14 @@ def extract_players() -> pd.DataFrame:
                 player['birthdate'] = pd.NA if player['birth'].get('date') is None else player['birth'].get('date')
                 player['rookie_year'] = pd.NA if player['nba'].get('start') == 0 else player['nba'].get('start')
                 player['years_pro'] = pd.NA if player['nba'].get('pro') in [0, None] else player['nba'].get('pro')
-                player['height'] = pd.NA if player['height'].get('feets') is None else (int(player['height'].get('feets')) * 12) + int(player['height'].get('inches'))
                 player['weight'] = pd.NA if player['weight'].get('pounds') is None else int(player['weight'].get('pounds'))
                 player['jersey_number'] = pd.NA if player.get('leagues', {}).get('standard', {}).get('jersey') is None else player.get('leagues', {}).get('standard', {}).get('jersey')
+                if player['height'].get('feets') is None:
+                    player['height'] = pd.NA
+                elif player['height'].get('inches') is None:
+                    player['height'] = player['height'].get('feets')
+                else:
+                    player['height'] = int(player['height'].get('feets')) + int(player['height'].get('inches'))
                 players.append(player)
 
     # Create DataFrame containing the selected columns
@@ -113,6 +118,7 @@ def extract_player_stats() -> pd.DataFrame:
     player_stats = []
     seasons = ['2021', '2022', '2023']
     team_ids = teams_df['team_id'].tolist()
+    game_ids = set(games_df['game_id'])
 
     # API only allows us to query one season and one team at a time
     for season in seasons:
@@ -135,22 +141,24 @@ def extract_player_stats() -> pd.DataFrame:
                 # if the player did not play in the game
                 if player_stat.get('min') == '--':
                     continue
-                player_stat['player_id'] = player_stat.get('player', {}).get('id')
-                player_stat['game_id'] = player_stat.get('game', {}).get('id')
-                player_stat['team_id'] = player_stat.get('team', {}).get('id')
-                player_stat['season'] = season
-                player_stat['position'] = player_stat.get('pos')
-                player_stat['minutes_played'] = int(player_stat.get('min'))
-                player_stat['fgp'] = float(player_stat.get('fgp'))
-                player_stat['ftp'] = float(player_stat.get('ftp'))
-                player_stat['tpp'] = float(player_stat.get('tpp'))
-                player_stat['position'] = pd.NA if player_stat.get('pos') is None else player_stat.get('pos')
-                player_stat['off_reb'] = player_stat.get('offReb')
-                player_stat['def_reb'] = player_stat.get('defReb')
-                player_stat['tot_reb'] = player_stat.get('totReb')
-                player_stat['p_fouls'] = player_stat.get('pFouls')
-                player_stat['plus_minus'] = 0 if player_stat.get('plusMinus') == '--' else int(player_stat.get('plusMinus'))
-                player_stats.append(player_stat)
+                # if the game the player played in is a valid game
+                if player_stat.get('game', {}).get('id') in game_ids:
+                    player_stat['player_id'] = player_stat.get('player', {}).get('id')
+                    player_stat['game_id'] = player_stat.get('game', {}).get('id')
+                    player_stat['team_id'] = player_stat.get('team', {}).get('id')
+                    player_stat['season'] = season
+                    player_stat['position'] = player_stat.get('pos')
+                    player_stat['minutes_played'] = player_stat.get('min')
+                    player_stat['fgp'] = pd.NA if player_stat.get('fgp') is None else float(player_stat.get('fgp'))
+                    player_stat['ftp'] = pd.NA if player_stat.get('ftp') is None else float(player_stat.get('ftp'))
+                    player_stat['tpp'] = pd.NA if player_stat.get('tpp') is None else float(player_stat.get('tpp'))
+                    player_stat['position'] = pd.NA if player_stat.get('pos') is None else player_stat.get('pos')
+                    player_stat['off_reb'] = pd.NA if player_stat.get('offReb') is None else player_stat.get('offReb')
+                    player_stat['def_reb'] = pd.NA if player_stat.get('defReb') is None else player_stat.get('defReb')
+                    player_stat['tot_reb'] = pd.NA if player_stat.get('totReb') is None else player_stat.get('totReb')
+                    player_stat['p_fouls'] = pd.NA if player_stat.get('pFouls') is None else player_stat.get('pFouls')
+                    player_stat['plus_minus'] = pd.NA if player_stat.get('plusMinus') in ('--', None) else int(player_stat.get('plusMinus'))
+                    player_stats.append(player_stat)
 
     player_stat_columns = ['player_id', 'game_id', 'team_id', 'season', 'points', 'position', 'minutes_played', 'fgm',
                            'fga', 'fgp', 'ftm', 'fta', 'ftp', 'tpm', 'tpa', 'tpp', 'off_reb', 'def_reb', 'tot_reb', 'assists',
@@ -262,23 +270,18 @@ headers = {
     'x-rapidapi-key': API_KEY,
     }
 
-#teams_df = extract_teams()
+teams_df = extract_teams()
 games_df = extract_games()
-#players_df = extract_players()
-#player_stats_df = extract_player_stats()
+players_df = extract_players()
+player_stats_df = extract_player_stats()
 
 api_connection.close()
 
-host = DB_HOST
-user = DB_USER
-passwd = DB_PW
-database = DB_NAME
-
 # Database connection and data insertion (LOAD)
-connection_string = f'mysql+mysqlconnector://{user}:{passwd}@{host}/{database}'
+connection_string = f'mysql+mysqlconnector://{DB_USER}:{DB_PW}@{DB_HOST}/{DB_NAME}'
 engine = create_engine(connection_string)
 
-#teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
+teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
 games_df.to_sql('games', con=engine, if_exists='append', index=False)
-#players_df.to_sql('players', con=engine, if_exists='append', index=False)
-#player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
+players_df.to_sql('players', con=engine, if_exists='append', index=False)
+player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
