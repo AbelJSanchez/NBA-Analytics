@@ -193,7 +193,7 @@ def extract_games() -> pd.DataFrame:
             if game['teams']['visitors'].get('id') not in exclusions:
                 game['game_id'] = game.get('id')
                 game['season'] = game.get('season')
-                game['duration'] = game['date'].get('duration') if game['date'].get('duration') is not None else pd.NA
+                game['duration'] = game['date'].get('duration')[0:1] + ":" + game['date'].get('duration')[3:4] if game['date'].get('duration') is not None else pd.NA
                 game['date'] = game['date'].get('start')[0:4] + "-" + game['date'].get('start')[5:10]
                 game['arena_name'] = pd.NA if game['arena'].get('name') is None else game['arena'].get('name')
                 game['arena_location'] = pd.NA if game['arena'].get('city') is None \
