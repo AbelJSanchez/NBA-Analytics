@@ -174,8 +174,8 @@ def extract_player_stats(api_con, header, df1, df2) -> pd.DataFrame:
                 # if the game the player played in is a valid game
                 if player_stat.get('game', {}).get('id') in game_ids:
                     player_stat['player_id'] = player_stat.get('player', {}).get('id')
-                    player_stat['game_id'] = player_stat.get('game', {}).get('id')
-                    player_stat['team_id'] = player_stat.get('team', {}).get('id')
+                    player_stat['player_game_id'] = player_stat.get('game', {}).get('id')
+                    player_stat['player_team_id'] = player_stat.get('team', {}).get('id')
                     player_stat['season'] = season
                     player_stat['position'] = player_stat.get('pos')
                     player_stat['minutes_played'] = player_stat.get('min')
@@ -190,7 +190,7 @@ def extract_player_stats(api_con, header, df1, df2) -> pd.DataFrame:
                     player_stat['plus_minus'] = pd.NA if player_stat.get('plusMinus') in ('--', None) else int(player_stat.get('plusMinus'))
                     player_stats.append(player_stat)
 
-    player_stat_columns = ['player_id', 'game_id', 'team_id', 'season', 'points', 'position', 'minutes_played', 'fgm',
+    player_stat_columns = ['player_id', 'player_game_id', 'player_team_id', 'season', 'points', 'position', 'minutes_played', 'fgm',
                            'fga', 'fgp', 'ftm', 'fta', 'ftp', 'tpm', 'tpa', 'tpp', 'off_reb', 'def_reb', 'tot_reb', 'assists',
                            'p_fouls', 'steals', 'turnovers', 'blocks', 'plus_minus']
     player_stat_data_frame = pd.DataFrame(player_stats)[player_stat_columns]
@@ -244,12 +244,10 @@ def extract_games(api_con, header) -> pd.DataFrame:
                     else pd.NA if game['arena'].get('state') is None \
                     else game['arena'].get('city') + ", " + game['arena'].get('state')
                 game['home_team_id'] = game['teams']['home'].get('id')
-                game['home_team'] = game['teams']['home'].get('name')
                 game['visitor_team_id'] = game['teams']['visitors'].get('id')
-                game['visitor_team'] = game['teams']['visitors'].get('name')
-                game['winning_team'] = pd.NA if game['scores']['home'].get('points') is None \
-                    else game['home_team'] if game['scores']['home'].get('points') > game['scores']['visitors'].get('points') \
-                    else game['visitor_team']
+                game['winning_team_id'] = pd.NA if game['scores']['home'].get('points') is None \
+                    else game['home_team_id'] if game['scores']['home'].get('points') > game['scores']['visitors'].get('points') \
+                    else game['visitor_team_id']
                 game['overtime'] = 'Yes' if game['periods'].get('current') > 4 else 'No'
                 game['home_quarter_points'] = ""
                 for quarter in game['scores']['home']['linescore']:
@@ -266,8 +264,8 @@ def extract_games(api_con, header) -> pd.DataFrame:
                 games.append(game)
 
     # Create DataFrame containing the selected columns
-    game_columns = ['game_id', 'season', 'date', 'duration', 'arena_name', 'arena_location', 'home_team_id', 'home_team', 'visitor_team_id',
-                    'visitor_team', 'winning_team', 'overtime', 'home_quarter_points', 'home_points', 'visitor_quarter_points', 'visitor_points',
+    game_columns = ['game_id', 'season', 'date', 'duration', 'arena_name', 'arena_location', 'home_team_id', 'visitor_team_id',
+                    'winning_team_id', 'overtime', 'home_quarter_points', 'home_points', 'visitor_quarter_points', 'visitor_points',
                     'times_tied', 'lead_changes']
     game_data_frame = pd.DataFrame(games)[game_columns]
 
@@ -331,7 +329,7 @@ def main():
     teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
     games_df.to_sql('games', con=engine, if_exists='append', index=False)
     players_df.to_sql('players', con=engine, if_exists='append', index=False)
-    player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
+    player_stats_df.to_sql('playerStats', con=engine, if_exists='append', index=False)
     print("Data exported to connected database.")
 
 
