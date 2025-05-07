@@ -25,10 +25,8 @@ CREATE TABLE games (
     arena_name VARCHAR(30),
     arena_location VARCHAR(20),
     home_team_id INT NOT NULL,
-    home_team VARCHAR(30) NOT NULL,
     visitor_team_id INT NOT NULL,
-    visitor_team VARCHAR(30) NOT NULL,
-    winning_team VARCHAR(30) NOT NULL,
+    winning_team_id INT NOT NULL,
     overtime VARCHAR(3) NOT NULL,
     home_quarter_points VARCHAR(30) NOT NULL,
     home_points INT NOT NULL,
@@ -37,7 +35,8 @@ CREATE TABLE games (
     times_tied INT,
     lead_changes INT,
     CONSTRAINT FOREIGN KEY (home_team_id) REFERENCES teams(team_id),
-    CONSTRAINT FOREIGN KEY (visitor_team_id) REFERENCES teams(team_id)
+    CONSTRAINT FOREIGN KEY (visitor_team_id) REFERENCES teams(team_id),
+    CONSTRAINT FOREIGN KEY (winning_team_id) REFERENCES teams(team_id)
 );
 
 CREATE TABLE players (
@@ -57,8 +56,8 @@ CREATE TABLE players (
 CREATE TABLE playerStats (
     player_stat_id INT NOT NULL AUTO_INCREMENT,
     player_id INT NOT NULL,
-    game_id INT NOT NULL,
-    team_id INT NOT NULL,
+    player_game_id INT NOT NULL,
+    player_team_id INT NOT NULL,
     season INT NOT NULL,
     points INT,
     position varchar(2),
@@ -82,7 +81,7 @@ CREATE TABLE playerStats (
     blocks INT,
     plus_minus INT,
     PRIMARY KEY (player_stat_id),
-    CONSTRAINT FOREIGN KEY (team_id) REFERENCES teams(team_id),
+    CONSTRAINT FOREIGN KEY (player_team_id) REFERENCES teams(team_id),
     CONSTRAINT FOREIGN KEY (player_id) REFERENCES players(player_id),
-    CONSTRAINT FOREIGN KEY (game_id) REFERENCES games(game_id)
+    CONSTRAINT FOREIGN KEY (player_game_id) REFERENCES games(game_id)
 );
