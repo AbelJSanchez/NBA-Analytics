@@ -1,9 +1,10 @@
-CREATE DATABASE NBA_STATS;
+DROP DATABASE IF EXISTS nba_analytics;
+CREATE DATABASE nba_analytics;
 
-DROP TABLE IF EXISTS teams;
 DROP TABLE IF EXISTS playerStats;
-DROP TABLE IF EXISTS games;
 DROP TABLE IF EXISTS players;
+DROP TABLE IF EXISTS games;
+DROP TABLE IF EXISTS teams;
 
 CREATE TABLE teams (
     team_id INT NOT NULL,
@@ -20,7 +21,7 @@ CREATE TABLE games (
     game_id INT PRIMARY KEY NOT NULL,
     season INT NOT NULL,
     date DATE NOT NULL,
-    duration CHAR(4),
+    duration INT,  -- measured in minutes
     arena_name VARCHAR(30),
     arena_location VARCHAR(20),
     home_team_id INT NOT NULL,
@@ -48,7 +49,7 @@ CREATE TABLE players (
     rookie_year INT,
     years_pro INT,
     height INT,
-    weights INT,
+    weight INT,
     jersey_number INT,
     PRIMARY KEY (player_id)
 );

@@ -227,7 +227,17 @@ def extract_games(api_con, header) -> pd.DataFrame:
             if game['teams']['visitors'].get('id') not in exclusions:
                 game['game_id'] = game.get('id')
                 game['season'] = game.get('season')
-                game['duration'] = game['date'].get('duration')[0:1] + ":" + game['date'].get('duration')[3:4] if game['date'].get('duration') is not None else pd.NA
+
+                # calculate duration in minutes
+                if game['date'].get('duration') not in (None, "", ":"):
+                    try:
+                        hours, minutes = map(int, game['date']['duration'].split(':'))
+                        game['duration'] = hours * 60 + minutes
+                    except ValueError:
+                        game['duration'] = pd.NA
+                else:
+                    game['duration'] = pd.NA
+
                 game['date'] = game['date'].get('start')[0:4] + "-" + game['date'].get('start')[5:10]
                 game['arena_name'] = pd.NA if game['arena'].get('name') is None else game['arena'].get('name')
                 game['arena_location'] = pd.NA if game['arena'].get('city') is None \
@@ -306,10 +316,10 @@ def main():
         'x-rapidapi-key': API_KEY,
         }
 
-    #teams_df = extract_teams(api_connection, headers)
+    teams_df = extract_teams(api_connection, headers)
     games_df = extract_games(api_connection, headers)
-   # players_df = extract_players(api_connection, headers, teams_df)
-   # player_stats_df = extract_player_stats(api_connection, headers, teams_df, games_df)
+    players_df = extract_players(api_connection, headers, teams_df)
+    player_stats_df = extract_player_stats(api_connection, headers, teams_df, games_df)
     print("Data frames extracted. Exporting data to connected database...\n")
 
     api_connection.close()
@@ -318,10 +328,10 @@ def main():
     connection_string = f'mysql+mysqlconnector://{DB_USER}:{DB_PW}@{DB_HOST}/{DB_NAME}'
     engine = create_engine(connection_string)
 
-    #teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
+    teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
     games_df.to_sql('games', con=engine, if_exists='append', index=False)
-    #players_df.to_sql('players', con=engine, if_exists='append', index=False)
-    #player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
+    players_df.to_sql('players', con=engine, if_exists='append', index=False)
+    player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
     print("Data exported to connected database.")
 
 
