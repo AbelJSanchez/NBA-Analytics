@@ -5,6 +5,8 @@ import json
 import pandas as pd  # pip install pandas
 import time
 from sqlalchemy import create_engine  # pip install sqlalchemy
+import mysql.connector
+
 
 API_CALLS = 0  # Global variable that tracks the current number of API calls
 MAX_CALLS = 350  # The maximum number of API calls per minute
@@ -14,18 +16,22 @@ pd.set_option('display.width', None)  # Use maximum width of terminal
 pd.set_option('display.max_rows', None)  # Show all rows
 
 
-def extract_teams() -> pd.DataFrame:
+def extract_teams(api_con, header) -> pd.DataFrame:
     """
-    Extracts team data via the API, filtering for NBA franchise teams.
+    Extract team data via the APISports NBA API.
 
-    :return: A Pandas DataFrame containing NBA team information with the columns: name, nickname, code, city, logo
+    :arg api_con: The established HTTPS connection with the NBA API.
+
+    :arg header: The headers sent with the API call.
+
+    :return: A Pandas DataFrame containing NBA team information with the columns:
+                'team_id', 'name', 'mascot', 'abv', 'city', 'conference', 'division'
     """
     # Request team data from the API
-    
     global API_CALLS
-    api_connection.request("GET", "/teams?league=standard", headers=headers)
+    api_con.request("GET", "/teams?league=standard", headers=header)
     API_CALLS += 1
-    response = api_connection.getresponse()
+    response = api_con.getresponse()
     data = response.read()
     # print(data)  # Uncomment to debug
     json_data = json.loads(data)
@@ -34,12 +40,22 @@ def extract_teams() -> pd.DataFrame:
     # Parse response and filter for NBA franchises
     for team in json_data['response']:
         if team.get('nbaFranchise') is True and team.get('allStar') is False:
-            team['team_id'] = team.get('id')
-            team['mascot'] = team.get('nickname')
-            team['abv'] = team.get('code')
-            team['conference'] = team.get('leagues', {}).get('standard', {}).get('conference')
-            team['division'] = team.get('leagues', {}).get('standard', {}).get('division')
-            teams.append(team)
+            if team.get('id') == 16:  # Handle edge case for Los Angeles Clippers
+                team['team_id'] = team.get('id')
+                team['name'] = "Los Angeles Clippers"
+                team['mascot'] = team.get('nickname')
+                team['abv'] = team.get('code')
+                team['city'] = "Los Angeles"
+                team['conference'] = team.get('leagues', {}).get('standard', {}).get('conference')
+                team['division'] = team.get('leagues', {}).get('standard', {}).get('division')
+                teams.append(team)
+            else:
+                team['team_id'] = team.get('id')
+                team['mascot'] = team.get('nickname')
+                team['abv'] = team.get('code')
+                team['conference'] = team.get('leagues', {}).get('standard', {}).get('conference')
+                team['division'] = team.get('leagues', {}).get('standard', {}).get('division')
+                teams.append(team)
 
     # Create DataFrame containing the selected columns
     team_columns = ['team_id', 'name', 'mascot', 'abv', 'city', 'conference', 'division']
@@ -48,16 +64,22 @@ def extract_teams() -> pd.DataFrame:
     return team_data_frame
 
 
-def extract_players() -> pd.DataFrame:
+def extract_players(api_con, header, df) -> pd.DataFrame:
     """
     Extracts player data via the API.
+
+    :arg api_con: The established HTTPS connection with the NBA API.
+
+    :arg header: The headers sent with the API call.
+
+    :arg df: The Pandas DataFrame containing NBA team IDs.
 
     :return: A Pandas DataFrame containing NBA player information with the columns:
                 id, firstname, lastname, position, college, birthdate, rookie_year, height_feet,
                 height_inches, weight_pounds, jersey_number
     """
     global API_CALLS, MAX_CALLS
-    team_ids = teams_df['team_id'].tolist()
+    team_ids = df['team_id'].tolist()
     seasons = [2021, 2022, 2023]
     players = []
     seen_players = set()
@@ -71,9 +93,9 @@ def extract_players() -> pd.DataFrame:
                 API_CALLS = 0
 
             # Request player data from the API
-            api_connection.request("GET", f'/players?season={season}&team={team_id}', headers=headers)
+            api_con.request("GET", f'/players?season={season}&team={team_id}', headers=header)
             API_CALLS += 1
-            response = api_connection.getresponse()
+            response = api_con.getresponse()
             data = response.read()
             # print(data)  # Uncomment to debug
             json_data = json.loads(data)
@@ -108,17 +130,25 @@ def extract_players() -> pd.DataFrame:
     return player_data_frame
 
 
-def extract_player_stats() -> pd.DataFrame:
+def extract_player_stats(api_con, header, df1, df2) -> pd.DataFrame:
     """
     Extracts player stat data via the API.
+
+    :arg api_con: The established HTTPS connection with the NBA API.
+
+    :arg header: The headers sent with the API call.
+
+    :arg df1: The Pandas DataFrame containing NBA team IDs.
+
+    :arg df2: The Pandas DataFrame containing NBA game IDs.
 
     :return: A Pandas DataFrame containing NBA player statistics
     """
     global API_CALLS, MAX_CALLS
     player_stats = []
     seasons = ['2021', '2022', '2023']
-    team_ids = teams_df['team_id'].tolist()
-    game_ids = set(games_df['game_id'])
+    team_ids = df1['team_id'].tolist()
+    game_ids = set(df2['game_id'])
 
     # API only allows us to query one season and one team at a time
     for season in seasons:
@@ -129,9 +159,9 @@ def extract_player_stats() -> pd.DataFrame:
                 API_CALLS = 0
 
             # Request player stats from the API
-            api_connection.request("GET", f"/players/statistics?team={team_id}&season={season}", headers=headers)
+            api_con.request("GET", f"/players/statistics?team={team_id}&season={season}", headers=header)
             API_CALLS += 1
-            response = api_connection.getresponse()
+            response = api_con.getresponse()
             data = response.read()
             json_data = json.loads(data)
             # print(data)  # Uncomment to debug
@@ -168,9 +198,13 @@ def extract_player_stats() -> pd.DataFrame:
     return player_stat_data_frame
   
 
-def extract_games() -> pd.DataFrame:
+def extract_games(api_con, header) -> pd.DataFrame:
     """
     Extracts game data in specified season via the API, filtering for NBA franchise teams.
+
+    :arg api_con: The established HTTPS connection with the NBA API.
+
+    :arg header: The headers sent with the API call.
 
     :return: A Pandas DataFrame containing NBA game information within a season with the columns: id, season, date, duration, arena_name,
                 arena_location, home_team, home_team_id, visitor_team, visitor_team_id, winning_team, overtime, home_quarter_points,
@@ -182,8 +216,8 @@ def extract_games() -> pd.DataFrame:
     seasons = ['2021', '2022', '2023']
     for season in seasons:
         endpoint = '/games?league=standard&season=' + season
-        api_connection.request("GET", endpoint, headers=headers)
-        response = api_connection.getresponse()
+        api_con.request("GET", endpoint, headers=header)
+        response = api_con.getresponse()
         data = response.read()
 
         # Parse JSON response for game data
@@ -234,54 +268,61 @@ def extract_games() -> pd.DataFrame:
     return game_data_frame
 
 
-# Retrieve API and Database credentials from local .env file
-load_dotenv()
-API_URL = os.getenv("API_URL")
-API_KEY = os.getenv("API_KEY")
-DB_HOST = os.getenv("DB_HOST")
-DB_USER = os.getenv("DB_USER")
-DB_PW = os.getenv("DB_PW")
-DB_NAME = os.getenv("DB_NAME")
+def main():
+    # Retrieve API and Database credentials from local .env file
+    load_dotenv()
+    API_URL = os.getenv("API_URL")
+    API_KEY = os.getenv("API_KEY")
+    DB_HOST = os.getenv("DB_HOST")
+    DB_USER = os.getenv("DB_USER")
+    DB_PW = os.getenv("DB_PW")
+    DB_NAME = os.getenv("DB_NAME")
 
-# Verify API and DB credentials are present within the .env file
-if not API_URL:
-    raise ValueError("API_URL not found in .env file. Please check your configuration.")
+    # Verify API and DB credentials are present within the .env file
+    if not API_URL:
+        raise ValueError("API_URL not found in .env file. Please check your configuration.")
 
-if not API_KEY:
-    raise ValueError("API_KEY not found in .env file. Please check your configuration.")
+    if not API_KEY:
+        raise ValueError("API_KEY not found in .env file. Please check your configuration.")
 
-if not DB_HOST:
-    raise ValueError("DB_HOST not found in .env file. Please check your configuration.")
+    if not DB_HOST:
+        raise ValueError("DB_HOST not found in .env file. Please check your configuration.")
 
-if not DB_USER:
-    raise ValueError("DB_USER not found in .env file. Please check your configuration.")
+    if not DB_USER:
+        raise ValueError("DB_USER not found in .env file. Please check your configuration.")
 
-if not DB_PW:
-    raise ValueError("DB_PW not found in .env file. Please check your configuration.")
+    if not DB_PW:
+        raise ValueError("DB_PW not found in .env file. Please check your configuration.")
 
-if not DB_NAME:
-    raise ValueError("DB_NAME not found in .env file. Please check your configuration.")
+    if not DB_NAME:
+        raise ValueError("DB_NAME not found in .env file. Please check your configuration.")
 
-# API connection and data extraction (EXTRACT/TRANSFORM)
-api_connection = http.client.HTTPSConnection(API_URL)
+    # API connection and data extraction (EXTRACT/TRANSFORM)
+    api_connection = http.client.HTTPSConnection(API_URL)
 
-headers = {
-    'x-rapidapi-host': API_URL,
-    'x-rapidapi-key': API_KEY,
-    }
+    headers = {
+        'x-rapidapi-host': API_URL,
+        'x-rapidapi-key': API_KEY,
+        }
 
-teams_df = extract_teams()
-games_df = extract_games()
-players_df = extract_players()
-player_stats_df = extract_player_stats()
+    teams_df = extract_teams(api_connection, headers)
+    # games_df = extract_games()
+    # players_df = extract_players()
+    # player_stats_df = extract_player_stats()
+    print("Data frames extracted. Exporting to connected database...")
 
-api_connection.close()
+    api_connection.close()
 
-# Database connection and data insertion (LOAD)
-connection_string = f'mysql+mysqlconnector://{DB_USER}:{DB_PW}@{DB_HOST}/{DB_NAME}'
-engine = create_engine(connection_string)
+    # Database connection and data insertion (LOAD)
+    connection_string = f'mysql+mysqlconnector://{DB_USER}:{DB_PW}@{DB_HOST}/{DB_NAME}'
+    engine = create_engine(connection_string)
 
-teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
-games_df.to_sql('games', con=engine, if_exists='append', index=False)
-players_df.to_sql('players', con=engine, if_exists='append', index=False)
-player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
+    teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
+    # games_df.to_sql('games', con=engine, if_exists='append', index=False)
+    # players_df.to_sql('players', con=engine, if_exists='append', index=False)
+    # player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
+    print("Data exported to connected database.")
+
+
+if __name__ == '__main__':
+    main()
