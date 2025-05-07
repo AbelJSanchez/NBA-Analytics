@@ -299,17 +299,18 @@ def main():
 
     # API connection and data extraction (EXTRACT/TRANSFORM)
     api_connection = http.client.HTTPSConnection(API_URL)
+    print("Beginning data frame extraction...\n")
 
     headers = {
         'x-rapidapi-host': API_URL,
         'x-rapidapi-key': API_KEY,
         }
 
-    teams_df = extract_teams(api_connection, headers)
-    # games_df = extract_games()
-    # players_df = extract_players()
-    # player_stats_df = extract_player_stats()
-    print("Data frames extracted. Exporting to connected database...")
+    #teams_df = extract_teams(api_connection, headers)
+    games_df = extract_games(api_connection, headers)
+   # players_df = extract_players(api_connection, headers, teams_df)
+   # player_stats_df = extract_player_stats(api_connection, headers, teams_df, games_df)
+    print("Data frames extracted. Exporting data to connected database...\n")
 
     api_connection.close()
 
@@ -317,10 +318,10 @@ def main():
     connection_string = f'mysql+mysqlconnector://{DB_USER}:{DB_PW}@{DB_HOST}/{DB_NAME}'
     engine = create_engine(connection_string)
 
-    teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
-    # games_df.to_sql('games', con=engine, if_exists='append', index=False)
-    # players_df.to_sql('players', con=engine, if_exists='append', index=False)
-    # player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
+    #teams_df.to_sql('teams', con=engine, if_exists='append', index=False)
+    games_df.to_sql('games', con=engine, if_exists='append', index=False)
+    #players_df.to_sql('players', con=engine, if_exists='append', index=False)
+    #player_stats_df.to_sql('playerstats', con=engine, if_exists='append', index=False)
     print("Data exported to connected database.")
 
 
