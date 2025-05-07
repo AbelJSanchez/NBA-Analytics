@@ -1,6 +1,6 @@
 CREATE DATABASE NBA_STATS;
 
-       DROP TABLE IF EXISTS teams;
+DROP TABLE IF EXISTS teams;
 DROP TABLE IF EXISTS playerStats;
 DROP TABLE IF EXISTS games;
 DROP TABLE IF EXISTS players;
@@ -17,7 +17,7 @@ CREATE TABLE teams (
 );
 
 CREATE TABLE games (
-    id INT PRIMARY KEY NOT NULL,
+    game_id INT PRIMARY KEY NOT NULL,
     season INT NOT NULL,
     date DATE NOT NULL,
     duration CHAR(4),
